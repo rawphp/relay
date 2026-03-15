@@ -8,6 +8,7 @@
 #include "interruption.h"
 #include "llm_prompt.h"
 #include "agent_bus.h"
+#include "bus_directive.h"
 #include "peer_registry.h"
 #include "group_chat_context.h"
 #include "pending_bus_messages.h"
@@ -86,6 +87,27 @@ struct event_loop {
 static void handle_context_memory_flush(event_loop_t *loop, const char *chat_id);
 static void get_session_key(event_loop_t *loop, const char *chat_id,
                             char *out, size_t out_size);
+
+/* ── Bus directive helper ───────────────────────────────────────────── */
+
+/* Process AGENT_BUS_SEND directives in an LLM response.
+ * Strips directives from result, sends bus messages, appends status notes.
+ * Modifies result in-place. No-op if bus is disabled or no peers. */
+static void process_bus_directives(event_loop_t *loop, char *result)
+{
+    if (!loop->agent_bus_enabled || peer_registry_count() == 0) return;
+    if (!result || result[0] == '\0') return;
+
+    const char *my_name = config_get(loop->deps.cfg, "agent_name", "");
+    char cleaned[RELAY_MAX_RESPONSE];
+    int count = bus_directive_process(result, cleaned, sizeof(cleaned),
+                                     my_name, NULL);
+    if (count > 0) {
+        snprintf(result, RELAY_MAX_RESPONSE, "%s", cleaned);
+        log_write(loop->deps.log, LOG_INFO,
+                  "Bus directives: processed %d directive(s)", count);
+    }
+}
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -245,8 +267,13 @@ static void dispatch_llm_response(event_loop_t *loop, const char *chat_id,
     health_success(loop->deps.health, HEALTH_LLM);
     loop->llm_alert_sent = 0; /* Reset so alert can fire again */
 
+    /* Process bus directives before sending to Telegram */
+    char result_buf[RELAY_MAX_RESPONSE];
+    snprintf(result_buf, sizeof(result_buf), "%s", resp->result);
+    process_bus_directives(loop, result_buf);
+
     char chunks[8][RELAY_TELEGRAM_CHUNK + 1];
-    int n = telegram_chunk_message(resp->result, chunks, 8);
+    int n = telegram_chunk_message(result_buf, chunks, 8);
     for (int i = 0; i < n; i++) {
         send_telegram(loop, chat_id, chunks[i]);
     }
@@ -880,10 +907,15 @@ static void *claude_worker_thread(void *arg)
             stream_ctx.accumulated[--stream_ctx.accumulated_len] = '\0';
         }
 
+        /* Process bus directives in final response before sending */
+        process_bus_directives(loop, resp.result);
+
         if (stream_ctx.first_chunk_sent) {
             /* Streaming sent ≥1 paragraph already.  Send any remaining text
              * (the last paragraph, which had no trailing \n\n). */
             if (stream_ctx.accumulated_len > 0) {
+                /* Re-process accumulated text for directives */
+                process_bus_directives(loop, stream_ctx.accumulated);
                 char chunks[8][RELAY_TELEGRAM_CHUNK + 1];
                 int n = telegram_chunk_message(stream_ctx.accumulated, chunks, 8);
                 for (int i = 0; i < n; i++) {
@@ -1024,6 +1056,7 @@ static void *reaction_worker_thread(void *arg)
                         "reaction");
 
     if (rc == RELAY_OK && !resp.is_error && resp.result[0] != '\0') {
+        process_bus_directives(loop, resp.result);
         profiler_timer_t send_timer;
         profiler_timer_start(&send_timer);
         char chunks[8][RELAY_TELEGRAM_CHUNK + 1];
