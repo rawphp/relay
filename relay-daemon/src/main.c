@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <pthread.h>
@@ -860,12 +861,36 @@ static int real_delete_file(const char *path)
     return (unlink(path) == 0) ? RELAY_OK : RELAY_ERR_IO;
 }
 
+static int real_list_dir(const char *dir, const char *suffix,
+                         char names[][256], int max)
+{
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+
+    int count = 0;
+    size_t suf_len = suffix ? strlen(suffix) : 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && count < max) {
+        if (ent->d_name[0] == '.') continue;
+        if (suffix && suf_len > 0) {
+            size_t nlen = strlen(ent->d_name);
+            if (nlen < suf_len) continue;
+            if (strcmp(ent->d_name + nlen - suf_len, suffix) != 0) continue;
+        }
+        snprintf(names[count], 256, "%s", ent->d_name);
+        count++;
+    }
+    closedir(d);
+    return count;
+}
+
 static relay_fs_t real_fs = {
     .read_file = real_read_file,
     .write_file = real_write_file,
     .file_exists = real_file_exists,
     .append_file = real_append_file,
-    .delete_file = real_delete_file
+    .delete_file = real_delete_file,
+    .list_dir = real_list_dir
 };
 
 /* ── PID file (helpers used by stop/status/restart subcommands) ─────── */
@@ -1461,6 +1486,7 @@ int main(int argc, char *argv[])
         .curator = curator,
         .cfg = cfg,
         .proc = &real_proc,
+        .fs = &real_fs,
         .config_path = config_path
     };
 

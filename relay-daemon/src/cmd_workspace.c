@@ -175,9 +175,9 @@ int cmd_workspace_handle(session_store_t *sessions,
         return 1;
     }
 
-    /* /spaces (primary) and /sessions, /space, /session (aliases) */
+    /* /spaces (primary) and /space, /session (aliases) — /sessions is now session discovery */
     if (strcmp(text, "/spaces") == 0 || strcmp(text, "/space") == 0 ||
-        strcmp(text, "/sessions") == 0 || strcmp(text, "/session") == 0) {
+        strcmp(text, "/session") == 0) {
         handle_sessions_list(sessions, cfg, chat_id, reply, reply_size);
         return 1;
     }

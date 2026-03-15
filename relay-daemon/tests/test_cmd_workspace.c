@@ -81,7 +81,7 @@ static void test_cmd_sessions_lists_workspaces(void)
     config_t *cfg = make_config_two_workspaces();
     char reply[512] = {0};
 
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
@@ -99,7 +99,7 @@ static void test_cmd_sessions_marks_active(void)
 
     /* Set "code" as active */
     session_set_active_workspace(s, "user1", "code");
-    cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+    cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
 
     /* Active workspace should be marked with * */
     TEST_ASSERT_NOT_NULL(strstr(reply, "*"));
@@ -254,7 +254,7 @@ static void test_cmd_sessions_shows_fallback_workspace(void)
     char reply[1024] = {0};
 
     /* No named workspace is active — fallback should appear with (default) label */
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "/Users/agent/home"));
@@ -270,7 +270,7 @@ static void test_cmd_sessions_no_duplicate_when_path_matches_named(void)
     config_t *cfg = make_config_fallback_matches_named();
     char reply[1024] = {0};
 
-    cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+    cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
 
     /* "ea" should appear exactly once — not duplicated as both named and (default) */
     const char *first = strstr(reply, "ea");
@@ -417,7 +417,7 @@ static void test_cmd_sessions_alias_still_works(void)
     config_t *cfg = make_config_two_workspaces();
     char reply[512] = {0};
 
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));

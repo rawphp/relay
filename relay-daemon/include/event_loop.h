@@ -32,6 +32,7 @@ typedef struct {
     memory_curator_t *curator;   /* Optional: memory curation pipeline (may be NULL) */
     config_t *cfg;
     relay_proc_t *proc;         /* Process spawner (for voice pipeline etc.) */
+    relay_fs_t *fs;             /* Filesystem abstraction (for session discovery etc.) */
     const char *config_path;    /* For config reload */
 } event_loop_deps_t;
 

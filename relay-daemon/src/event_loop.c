@@ -2,6 +2,7 @@
 #include "el_reply.h"
 #include "el_spinner.h"
 #include "cmd_workspace.h"
+#include "cmd_sessions.h"
 #include "workspace_resolver.h"
 #include "config_validator.h"
 #include "interruption.h"
@@ -1324,7 +1325,7 @@ static void handle_message(event_loop_t *loop, telegram_message_t *msg)
 
     /* Handle commands */
     if (msg->is_command) {
-        /* Workspace commands — /session, /sessions, /workspace, /close, /clear */
+        /* Workspace commands — /space, /spaces, /workspace, /close, /clear */
         {
             char ws_reply[512] = {0};
             if (cmd_workspace_handle(loop->deps.sessions, loop->deps.cfg,
@@ -1342,6 +1343,22 @@ static void handle_message(event_loop_t *loop, telegram_message_t *msg)
                 profiler_emit_event("request.total",
                                     profiler_timer_elapsed_ms(&total_timer),
                                     "ok", "command_workspace");
+                profiler_clear_context();
+                return;
+            }
+        }
+        /* Session discovery — /sessions */
+        {
+            char sess_reply[2048] = {0};
+            if (cmd_sessions_handle(loop->deps.fs, loop->deps.sessions,
+                                    loop->deps.cfg, msg->chat_id,
+                                    msg->text, sess_reply, sizeof(sess_reply))) {
+                send_telegram(loop, msg->chat_id, sess_reply);
+                log_write(loop->deps.log, LOG_INFO,
+                          "Sessions command handled for %s", msg->chat_id);
+                profiler_emit_event("request.total",
+                                    profiler_timer_elapsed_ms(&total_timer),
+                                    "ok", "command_sessions");
                 profiler_clear_context();
                 return;
             }
