@@ -2251,6 +2251,14 @@ static void poll_agent_bus(event_loop_t *loop)
         } else {
             log_write(loop->deps.log, LOG_INFO,
                       "Agent bus: replied to %s at depth %d", msg.from, msg.depth + 1);
+
+            /* Notify the human so they can observe agent-to-agent exchanges */
+            if (loop->authorized_user[0] != '\0') {
+                char note[512];
+                snprintf(note, sizeof(note), "[Bus] %s → %s: %.200s",
+                         msg.from, my_name, resp.result);
+                send_telegram(loop, loop->authorized_user, note);
+            }
         }
     }
 }
