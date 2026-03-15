@@ -114,9 +114,16 @@ static int handle_sessions_list(relay_fs_t *fs,
         return 1;
     }
 
+    /* Determine display name — never blank */
+    const char *display_name = ws.name;
+    if (!display_name || display_name[0] == '\0') {
+        /* Use basename of the path */
+        const char *slash = strrchr(ws.path, '/');
+        display_name = (slash && slash[1]) ? slash + 1 : ws.path;
+    }
+
     char buf[2048];
-    snprintf(buf, sizeof(buf), "Sessions in %s:\n",
-             ws.name[0] ? ws.name : ws.path);
+    snprintf(buf, sizeof(buf), "Sessions in %s:\n", display_name);
 
     for (int i = 0; i < count; i++) {
         char line[256];

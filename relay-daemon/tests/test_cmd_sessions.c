@@ -224,6 +224,67 @@ static void test_sessions_no_workspace_configured(void)
     config_free(cfg);
 }
 
+/* ── REQ-143: space name in header ──────────────────────────────────── */
+
+static void test_sessions_header_shows_space_name(void)
+{
+    mock_fs_reset();
+    char *orig_home = getenv("HOME") ? strdup(getenv("HOME")) : NULL;
+    setenv("HOME", "/home/tom", 1);
+
+    mock_fs_set("/home/tom/.claude/projects/-Users-tom-project/aaa.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Hi\"}}\n");
+
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_claude_config();
+    session_set_active_workspace(s, "user1", "relay");
+
+    char reply[1024] = {0};
+    cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                        "/sessions", reply, sizeof(reply));
+
+    /* Header should show workspace name "relay" */
+    TEST_ASSERT_NOT_NULL(strstr(reply, "relay"));
+
+    session_free(s);
+    config_free(cfg);
+    if (orig_home) { setenv("HOME", orig_home, 1); free(orig_home); }
+}
+
+static config_t *make_global_path_config(void)
+{
+    const char *text =
+        "provider = claude\n"
+        "workspace_path = /Users/tom/project\n";
+    return config_load_string(text);
+}
+
+static void test_sessions_header_shows_basename_fallback(void)
+{
+    mock_fs_reset();
+    char *orig_home = getenv("HOME") ? strdup(getenv("HOME")) : NULL;
+    setenv("HOME", "/home/tom", 1);
+
+    mock_fs_set("/home/tom/.claude/projects/-Users-tom-project/bbb.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Hi\"}}\n");
+
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_global_path_config();
+
+    char reply[1024] = {0};
+    cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                        "/sessions", reply, sizeof(reply));
+
+    /* No workspace name — should show basename "project", not full path */
+    TEST_ASSERT_NOT_NULL(strstr(reply, "Sessions in project:"));
+
+    session_free(s);
+    config_free(cfg);
+    if (orig_home) { setenv("HOME", orig_home, 1); free(orig_home); }
+}
+
 /* ── REQ-142: /session <N> selection ────────────────────────────────── */
 
 static void test_session_select_valid(void)
@@ -343,6 +404,9 @@ void test_cmd_sessions_suite(void)
     RUN_TEST(test_sessions_no_sessions_found);
     /* REQ-139 */
     RUN_TEST(test_sessions_no_workspace_configured);
+    /* REQ-143: space name in header */
+    RUN_TEST(test_sessions_header_shows_space_name);
+    RUN_TEST(test_sessions_header_shows_basename_fallback);
     /* REQ-142 */
     RUN_TEST(test_session_select_valid);
     RUN_TEST(test_session_select_zero_new);
