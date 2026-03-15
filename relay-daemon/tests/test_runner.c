@@ -42,6 +42,7 @@ extern void test_health_alert_suite(void);
 extern void test_spawn_diag_suite(void);
 extern void test_voice_pipeline_suite(void);
 extern void test_session_discovery_suite(void);
+extern void test_cmd_sessions_suite(void);
 
 int main(void)
 {
@@ -84,6 +85,7 @@ int main(void)
     test_spawn_diag_suite();
     test_voice_pipeline_suite();
     test_session_discovery_suite();
+    test_cmd_sessions_suite();
 
     return UNITY_END();
 }
