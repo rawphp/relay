@@ -1,0 +1,9 @@
+[
+  {
+    "id": "example",
+    "name": "Example Site",
+    "base_url": "https://example.com",
+    "critical_pages": ["/", "/about"],
+    "max_load_time_ms": 3000
+  }
+]

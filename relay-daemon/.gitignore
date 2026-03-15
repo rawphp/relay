@@ -1,0 +1,7 @@
+tmp/
+build/
+*.o
+relay
+kaid
+test_runner
+*.dSYM/

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Semantic memory search CLI wrapper
+# Activates memory venv and sets PYTHONPATH
+
+RELAY_HOME="${RELAY_HOME:-$HOME/relay}"
+SHARED_VENV="${SHARED_VENV:-$HOME/.relay-shared/venv}"
+
+# Use shared venv if available, fall back to per-agent venv for legacy installs
+if [ -d "$SHARED_VENV" ]; then
+    source "$SHARED_VENV/bin/activate"
+else
+    source "$RELAY_HOME/lib/memory/venv/bin/activate"
+fi
+
+# Run search with proper PYTHONPATH
+PYTHONPATH="$RELAY_HOME" exec python3 "$RELAY_HOME/lib/memory/search.py" "$@"

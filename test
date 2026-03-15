@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# test — run the full relay test suite
+#
+# Usage:
+#   ./test           run everything
+#   ./test c         run only C tests
+#   ./test py        run only Python tests
+#   ./test py -v     pass flags through to pytest (e.g. -v, -k, --tb=short)
+#
+# Exit code: 0 if all suites pass, 1 if any fail.
+
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$0")" && pwd)"
+C_DIR="$REPO/relay-daemon"
+PY_TESTS="$REPO/tests"
+
+# ── Colour helpers ───────────────────────────────────────────────────────
+if [ -t 1 ]; then
+  BOLD='\033[1m'; GREEN='\033[0;32m'; RED='\033[0;31m'
+  YELLOW='\033[0;33m'; RESET='\033[0m'
+else
+  BOLD=''; GREEN=''; RED=''; YELLOW=''; RESET=''
+fi
+
+header() { echo -e "\n${BOLD}$1${RESET}"; }
+ok()     { echo -e "${GREEN}✓ $1${RESET}"; }
+fail()   { echo -e "${RED}✗ $1${RESET}"; }
+skip()   { echo -e "${YELLOW}– $1${RESET}"; }
+
+# ── Argument parsing ─────────────────────────────────────────────────────
+RUN_C=1
+RUN_PY=1
+PY_ARGS=()
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    c)   RUN_C=1; RUN_PY=0; shift ;;
+    py)  RUN_C=0; RUN_PY=1; shift ;;
+  esac
+  # Remaining args passed through to pytest
+  PY_ARGS=("$@")
+fi
+
+C_PASSED=0; C_FAILED=0
+PY_PASSED=0; PY_FAILED=0
+
+# ── C tests ──────────────────────────────────────────────────────────────
+if [[ $RUN_C -eq 1 ]]; then
+  header "C Tests  (relay-daemon/)"
+  if make -C "$C_DIR" test; then
+    ok "C test suite passed"
+    C_PASSED=1
+  else
+    fail "C test suite FAILED"
+    C_FAILED=1
+  fi
+fi
+
+# ── Python tests ─────────────────────────────────────────────────────────
+if [[ $RUN_PY -eq 1 ]]; then
+  header "Python Tests  (tests/)"
+  PYTHON=$(command -v python3 || true)
+  if [[ -z "$PYTHON" ]]; then
+    skip "python3 not found — skipping Python tests"
+  elif ! "$PYTHON" -m pytest --version &>/dev/null; then
+    skip "pytest not installed — run: pip3 install pytest"
+  else
+    if "$PYTHON" -m pytest "$PY_TESTS" \
+        --ignore="$PY_TESTS/memory" \
+        --ignore="$PY_TESTS/update" \
+        --ignore="$PY_TESTS/test_dashboard.py" \
+        "${PY_ARGS[@]+"${PY_ARGS[@]}"}"; then
+      ok "Python test suite passed"
+      PY_PASSED=1
+    else
+      fail "Python test suite FAILED"
+      PY_FAILED=1
+    fi
+  fi
+fi
+
+# ── Summary ──────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}────────────────────────────────${RESET}"
+
+if [[ $RUN_C -eq 1 ]]; then
+  [[ $C_PASSED -eq 1 ]] && ok "C" || fail "C"
+fi
+if [[ $RUN_PY -eq 1 ]]; then
+  [[ $PY_PASSED -eq 1 ]] && ok "Python" || fail "Python"
+fi
+
+echo -e "${BOLD}────────────────────────────────${RESET}"
+
+if [[ $C_FAILED -eq 1 || $PY_FAILED -eq 1 ]]; then
+  exit 1
+fi
+exit 0

@@ -1,0 +1,34 @@
+# USER.md - Who Is {{USER_NAME}}?
+
+## Identity
+
+- **Name:** {{USER_NAME}}
+- **Pronouns:** (fill in)
+- **Location / Timezone:** (fill in — e.g. Brisbane, Australia — AEST)
+- **Email:** (fill in)
+
+## Work
+
+- **Role:** (fill in — e.g. Founder, Developer, Designer)
+- **Current projects:**
+  - (list your active projects here)
+
+## Communication Style
+
+- (How do you like to communicate? Concise? Detailed?)
+- (Any preferences on formality, tone?)
+
+## Personal Context
+
+- (Family situation, if relevant)
+- (Health / fitness context, if relevant)
+- (Other things that help the agent serve you better)
+
+## How We Work Together
+
+- (Any specific workflows or preferences)
+- (What you want the agent to handle autonomously vs. check in on)
+
+---
+
+*Fill this in so {{AGENT_NAME}} knows who you are. The more context, the better.*

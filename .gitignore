@@ -1,0 +1,35 @@
+.playwright-mcp
+.pytest_cache
+
+# Build artifacts
+relay-daemon/kaid
+relay-daemon/relay
+relay-daemon/build/
+*.o
+*.bak
+
+do-work/archive/*
+!do-work/archive/.gitkeep
+do-work/decisions/*
+!do-work/decisions/.gitkeep
+do-work/working/*
+!do-work/working/.gitkeep
+do-work/user-requests/*
+!do-work/user-requests/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+lib/memory/venv/
+
+# Temp
+tmp/
+*.log
+
+# Local Claude Code settings (may contain secrets)
+.claude/settings.local.json
+
+# VitePress build output and dependencies
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+node_modules/

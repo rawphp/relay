@@ -1,0 +1,36 @@
+---
+# SKILL.md — Metadata format for relay skills
+# Place this frontmatter at the top of your skill's main .md file.
+# The manifest scanner (skill-manifest.sh) reads these fields automatically.
+
+# Required fields
+name: my-skill                    # Unique slug (lowercase, kebab-case)
+description: One-line summary     # What this skill does (keep under 80 chars)
+entry_point: ~/relay/skills/my-skill/run.sh   # Path to the executable entry point
+
+# Dependencies — checked by the manifest scanner at build time
+# Prefix with config: for relay.conf keys, bin: for binaries in PATH
+requires:
+  - config:some_api_key           # Checks relay.conf for non-empty value
+  - bin:curl                      # Checks command -v curl
+  - bin:jq                        # Checks command -v jq
+
+# Trigger phrases — the agent matches these against user messages to self-route
+# Keep them short and specific. The agent sees these in the one-line index.
+triggers:
+  - "do something"
+  - "run my skill"
+  - "keyword"
+
+# Optional: fallback skill when this one is degraded/unavailable
+fallback: other-skill-name
+
+# Optional: captured_from date (auto-populated by skill-capture.sh)
+# captured_from: 2026-03-13
+---
+
+# My Skill — Full Documentation
+
+Full documentation goes below the frontmatter.
+The manifest scanner only reads the YAML block above.
+This content is available on-demand when the agent reads the file directly.

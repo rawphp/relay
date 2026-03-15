@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Service label (unique identifier) -->
+    <key>Label</key>
+    <string>__PLIST_LABEL__</string>
+
+    <!-- Program to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__RELAY_HOME__/scripts/maintenance/relay-watchdog.sh</string>
+    </array>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>__RELAY_HOME__</string>
+
+    <!-- Run at load (boot) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep alive - auto-restart on any exit -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Restart throttle (don't spam restarts) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Standard output/error logs -->
+    <key>StandardOutPath</key>
+    <string>__RELAY_HOME__/logs/launchd-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__RELAY_HOME__/logs/launchd-stderr.log</string>
+
+    <!-- Process type (adaptive = background daemon) -->
+    <key>ProcessType</key>
+    <string>Adaptive</string>
+
+    <!-- Nice level (0 = normal priority) -->
+    <key>Nice</key>
+    <integer>0</integer>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__PATH__</string>
+        <key>RELAY_HOME</key>
+        <string>__RELAY_HOME__</string>
+    </dict>
+</dict>
+</plist>
