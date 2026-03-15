@@ -2234,11 +2234,13 @@ static void poll_agent_bus(event_loop_t *loop)
     char prompt[4096 + 256];
     if (msg.participants[0] != '\0') {
         snprintf(prompt, sizeof(prompt),
-                 "[Group chat — participants: %s — from %s]: %s\n\nRespond concisely.",
+                 "[Agent bus message — participants: %s — from %s]: %s\n\n"
+                 "Reply directly. Do NOT use [AGENT_BUS_SEND] — the daemon routes your reply automatically.",
                  msg.participants, msg.from, msg.text);
     } else {
         snprintf(prompt, sizeof(prompt),
-                 "[Group chat — from %s]: %s\n\nRespond concisely.",
+                 "[Agent bus message from %s]: %s\n\n"
+                 "Reply directly. Do NOT use [AGENT_BUS_SEND] — the daemon routes your reply automatically.",
                  msg.from, msg.text);
     }
 

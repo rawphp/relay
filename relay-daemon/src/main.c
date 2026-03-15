@@ -467,25 +467,18 @@ static int proc_spawn(const char *bin, const char **args,
 /* Like proc_spawn() but reads JSONL line-by-line from stdout,
  * calling on_token for text deltas and capturing the result line. */
 
-static void process_stream_line(const char *line,
-                                relay_stream_token_cb on_token, void *userdata,
-                                char *result_line, size_t result_max,
-                                int *got_result)
+/* Process a single JSON object from the stream.
+ * Extracted so it can be called for individual objects or array elements. */
+static void process_stream_object(cJSON *obj,
+                                  relay_stream_token_cb on_token, void *userdata,
+                                  char *result_line, size_t result_max,
+                                  int *got_result)
 {
-    cJSON *root = cJSON_Parse(line);
-    if (!root) {
-        return;
-    }
-
-    cJSON *type = cJSON_GetObjectItem(root, "type");
-    if (!cJSON_IsString(type)) {
-        cJSON_Delete(root);
-        return;
-    }
+    cJSON *type = cJSON_GetObjectItem(obj, "type");
+    if (!cJSON_IsString(type)) return;
 
     if (strcmp(type->valuestring, "stream_event") == 0) {
-        /* Extract text from: event.delta.type=="text_delta" → event.delta.text */
-        cJSON *event = cJSON_GetObjectItem(root, "event");
+        cJSON *event = cJSON_GetObjectItem(obj, "event");
         if (event) {
             cJSON *etype = cJSON_GetObjectItem(event, "type");
             if (cJSON_IsString(etype) &&
@@ -503,10 +496,55 @@ static void process_stream_line(const char *line,
                 }
             }
         }
+    } else if (strcmp(type->valuestring, "assistant") == 0) {
+        /* Extract text from assistant message content array */
+        cJSON *message = cJSON_GetObjectItem(obj, "message");
+        if (message) {
+            cJSON *content = cJSON_GetObjectItem(message, "content");
+            if (cJSON_IsArray(content)) {
+                cJSON *item = NULL;
+                cJSON_ArrayForEach(item, content) {
+                    cJSON *ctype = cJSON_GetObjectItem(item, "type");
+                    cJSON *text = cJSON_GetObjectItem(item, "text");
+                    if (cJSON_IsString(ctype) &&
+                        strcmp(ctype->valuestring, "text") == 0 &&
+                        cJSON_IsString(text)) {
+                        on_token(text->valuestring, strlen(text->valuestring),
+                                 userdata);
+                    }
+                }
+            }
+        }
     } else if (strcmp(type->valuestring, "result") == 0) {
-        /* Capture the raw result line for later parsing */
-        snprintf(result_line, result_max, "%s", line);
+        char *printed = cJSON_PrintUnformatted(obj);
+        if (printed) {
+            snprintf(result_line, result_max, "%s", printed);
+            free(printed);
+        }
         *got_result = 1;
+    }
+}
+
+static void process_stream_line(const char *line,
+                                relay_stream_token_cb on_token, void *userdata,
+                                char *result_line, size_t result_max,
+                                int *got_result)
+{
+    cJSON *root = cJSON_Parse(line);
+    if (!root) return;
+
+    if (cJSON_IsArray(root)) {
+        /* JSON array: iterate each element */
+        cJSON *item = NULL;
+        cJSON_ArrayForEach(item, root) {
+            if (cJSON_IsObject(item)) {
+                process_stream_object(item, on_token, userdata,
+                                      result_line, result_max, got_result);
+            }
+        }
+    } else if (cJSON_IsObject(root)) {
+        process_stream_object(root, on_token, userdata,
+                              result_line, result_max, got_result);
     }
 
     cJSON_Delete(root);
