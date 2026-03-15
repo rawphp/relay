@@ -70,10 +70,81 @@ static void test_resolve_default_config_path_fallback(void)
     TEST_ASSERT_EQUAL_STRING("config/relay.conf", result);
 }
 
+/* ── REQ-134: Claude path encode/decode ───────────────────────────────── */
+
+static void test_encode_claude_dir_normal_path(void)
+{
+    char out[256];
+    path_util_encode_claude_dir("/Users/tom/project", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("-Users-tom-project", out);
+}
+
+static void test_encode_claude_dir_root_path(void)
+{
+    char out[256];
+    path_util_encode_claude_dir("/", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("-", out);
+}
+
+static void test_encode_claude_dir_empty_string(void)
+{
+    char out[256];
+    path_util_encode_claude_dir("", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("", out);
+}
+
+static void test_encode_claude_dir_trailing_slash(void)
+{
+    char out[256];
+    path_util_encode_claude_dir("/Users/tom/project/", out, sizeof(out));
+    /* Trailing slash stripped before encoding */
+    TEST_ASSERT_EQUAL_STRING("-Users-tom-project", out);
+}
+
+static void test_decode_claude_dir_normal(void)
+{
+    char out[256];
+    path_util_decode_claude_dir("-Users-tom-project", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("/Users/tom/project", out);
+}
+
+static void test_decode_claude_dir_root(void)
+{
+    char out[256];
+    path_util_decode_claude_dir("-", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("/", out);
+}
+
+static void test_decode_claude_dir_empty(void)
+{
+    char out[256];
+    path_util_decode_claude_dir("", out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("", out);
+}
+
+static void test_encode_decode_round_trip(void)
+{
+    const char *original = "/Users/tomkaczocha/EA/projects/relay";
+    char encoded[256];
+    char decoded[256];
+    path_util_encode_claude_dir(original, encoded, sizeof(encoded));
+    path_util_decode_claude_dir(encoded, decoded, sizeof(decoded));
+    TEST_ASSERT_EQUAL_STRING(original, decoded);
+}
+
 /* ── Suite ────────────────────────────────────────────────────────────── */
 
 void test_path_util_suite(void)
 {
     RUN_TEST(test_resolve_default_config_path_found);
     RUN_TEST(test_resolve_default_config_path_fallback);
+    /* REQ-134 */
+    RUN_TEST(test_encode_claude_dir_normal_path);
+    RUN_TEST(test_encode_claude_dir_root_path);
+    RUN_TEST(test_encode_claude_dir_empty_string);
+    RUN_TEST(test_encode_claude_dir_trailing_slash);
+    RUN_TEST(test_decode_claude_dir_normal);
+    RUN_TEST(test_decode_claude_dir_root);
+    RUN_TEST(test_decode_claude_dir_empty);
+    RUN_TEST(test_encode_decode_round_trip);
 }

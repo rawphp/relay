@@ -21,4 +21,13 @@
  */
 void resolve_default_config_path(const char *argv0, char *out, size_t max);
 
+/* Encode an absolute path for Claude Code's ~/.claude/projects/ directory naming.
+ * Replaces '/' with '-', e.g. "/Users/tom/project" → "-Users-tom-project".
+ * Trailing slashes are stripped before encoding. */
+void path_util_encode_claude_dir(const char *path, char *out, size_t max);
+
+/* Decode a Claude Code project directory name back to an absolute path.
+ * Replaces '-' with '/', e.g. "-Users-tom-project" → "/Users/tom/project". */
+void path_util_decode_claude_dir(const char *encoded, char *out, size_t max);
+
 #endif /* RELAY_PATH_UTIL_H */

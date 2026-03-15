@@ -6,6 +6,45 @@
 #include <string.h>
 #include <unistd.h>
 
+void path_util_encode_claude_dir(const char *path, char *out, size_t max)
+{
+    if (!out || max == 0) return;
+    if (!path || path[0] == '\0') {
+        out[0] = '\0';
+        return;
+    }
+
+    /* Strip trailing slashes from a working copy */
+    size_t len = strlen(path);
+    while (len > 1 && path[len - 1] == '/') {
+        len--;
+    }
+
+    /* Replace '/' with '-' */
+    size_t j = 0;
+    for (size_t i = 0; i < len && j < max - 1; i++) {
+        out[j++] = (path[i] == '/') ? '-' : path[i];
+    }
+    out[j] = '\0';
+}
+
+void path_util_decode_claude_dir(const char *encoded, char *out, size_t max)
+{
+    if (!out || max == 0) return;
+    if (!encoded || encoded[0] == '\0') {
+        out[0] = '\0';
+        return;
+    }
+
+    /* Replace '-' with '/' */
+    size_t len = strlen(encoded);
+    size_t j = 0;
+    for (size_t i = 0; i < len && j < max - 1; i++) {
+        out[j++] = (encoded[i] == '-') ? '/' : encoded[i];
+    }
+    out[j] = '\0';
+}
+
 void resolve_default_config_path(const char *argv0, char *out, size_t max)
 {
     static const char *fallback = "config/relay.conf";
