@@ -8,6 +8,7 @@
 #include "interruption.h"
 #include "llm_prompt.h"
 #include "agent_bus.h"
+#include "peer_registry.h"
 #include "group_chat_context.h"
 #include "pending_bus_messages.h"
 #include "pending_response.h"
@@ -70,6 +71,7 @@ struct event_loop {
     /* Agent bus state */
     int  agent_bus_enabled;
     char agent_bus_log_dir[RELAY_MAX_PATH];
+    time_t last_peer_probe;
 
     /* Crash recovery: set on startup if pending-response.json was found */
     char pending_recovery_chat_id[RELAY_MAX_USER_ID];
@@ -2278,6 +2280,15 @@ int event_loop_run(event_loop_t *loop)
 
         /* Check agent bus (non-blocking — returns immediately if nothing pending) */
         poll_agent_bus(loop);
+
+        /* Periodic peer liveness re-probe (every 60 seconds) */
+        if (loop->agent_bus_enabled && peer_registry_count() > 0) {
+            time_t now = time(NULL);
+            if (now - loop->last_peer_probe >= 60) {
+                peer_registry_probe_all();
+                loop->last_peer_probe = now;
+            }
+        }
 
         /* Poll Telegram */
         poll_telegram(loop);

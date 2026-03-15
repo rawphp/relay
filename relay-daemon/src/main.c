@@ -14,6 +14,7 @@
 #include "memory_sidecar.h"
 #include "memory_curator.h"
 #include "agent_bus.h"
+#include "peer_registry.h"
 #include "profiler.h"
 #include "proc_log_partial.h"
 #include "stream_timeout.h"
@@ -1469,6 +1470,30 @@ int main(int argc, char *argv[])
         agent_bus_set_rate_limit(bus_rate);
         if (agent_bus_init(agent_bus_path) == RELAY_OK) {
             log_write(log, LOG_INFO, "Agent bus: listening on %s", agent_bus_path);
+
+            /* Discover peer agents from ~/.relay registry */
+            const char *home = getenv("HOME");
+            if (home) {
+                char reg_path[RELAY_MAX_PATH];
+                snprintf(reg_path, sizeof(reg_path), "%s/.relay", home);
+                const char *my_name = config_get(cfg, "agent_name", "");
+                peer_registry_init(reg_path, my_name);
+                peer_registry_probe_all();
+                int n = peer_registry_count();
+                if (n > 0) {
+                    log_write(log, LOG_INFO,
+                              "Peer registry: discovered %d peer(s)", n);
+                    for (int i = 0; i < n; i++) {
+                        const peer_entry_t *p = peer_registry_get(i);
+                        log_write(log, LOG_INFO,
+                                  "  %s — %s", p->name,
+                                  p->is_alive ? "online" : "offline");
+                    }
+                } else {
+                    log_write(log, LOG_INFO,
+                              "Peer registry: no other agents found");
+                }
+            }
         } else {
             log_write(log, LOG_WARN, "Agent bus: init failed — inter-agent chat disabled");
             agent_bus_enabled = 0;
@@ -1504,6 +1529,7 @@ int main(int argc, char *argv[])
 cleanup:
     log_write(log, LOG_INFO, "relay shutting down");
     if (agent_bus_enabled) agent_bus_destroy();
+    peer_registry_destroy();
 
     if (g_loop) {
         event_loop_free(g_loop);  /* Also frees config */
