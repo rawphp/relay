@@ -1,6 +1,6 @@
 # relay
 
-**A persistent AI familiar — text your agent on Telegram, it works in your codebase.**
+**A persistent AI assistant — text your agent on Telegram, it works in your codebase.**
 
 relay is a lightweight C daemon that routes Telegram messages to Claude Code (or Gemini, or OpenAI Codex) running on your machine. Configure workspaces, switch between them like browser tabs, and your agent picks up exactly where you left off.
 
