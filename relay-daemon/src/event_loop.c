@@ -9,6 +9,7 @@
 #include "llm_prompt.h"
 #include "agent_bus.h"
 #include "bus_directive.h"
+#include "path_util.h"
 #include "peer_registry.h"
 #include "group_chat_context.h"
 #include "pending_bus_messages.h"
@@ -2169,9 +2170,10 @@ static void poll_agent_bus(event_loop_t *loop)
     }
 
     /* Prepend any messages this agent missed due to previous LLM errors */
-    const char *ws = config_get(loop->deps.cfg, "workspace_path", ".");
+    char pending_dir[RELAY_MAX_PATH] = ".";
+    path_util_install_dir(loop->config_path, pending_dir, sizeof(pending_dir));
     char pending_prefix[8192] = "";
-    int has_pending = pending_bus_load(ws, pending_prefix, sizeof(pending_prefix));
+    int has_pending = pending_bus_load(pending_dir, pending_prefix, sizeof(pending_prefix));
 
     char full_bus_prompt[12288];
     if (has_pending) {
@@ -2186,23 +2188,29 @@ static void poll_agent_bus(event_loop_t *loop)
     snprintf(session_key, sizeof(session_key), "agent-bus:%s", msg.from);
     const char *session_id = session_get(loop->deps.sessions, session_key);
 
-    /* Call LLM synchronously (same pattern as document/photo handlers) */
+    /* Resolve workspace so LLM has a valid working directory */
+    resolved_workspace_t bus_ws;
+    workspace_resolve(loop->deps.sessions, loop->deps.cfg,
+                      "agent-bus", loop->config_path, &bus_ws);
+
+    /* Call LLM with resolved workspace */
     llm_response_t resp;
     memset(&resp, 0, sizeof(resp));
-    rc = llm_provider_send_with_retry(loop->deps.llm, full_bus_prompt, session_id, &resp);
+    rc = llm_provider_send_workspace(loop->deps.llm, full_bus_prompt, session_id,
+                                     bus_ws.path, bus_ws.provider, &resp);
 
     if (rc != RELAY_OK || resp.is_error || resp.result[0] == '\0') {
         log_write(loop->deps.log, LOG_WARN,
                   "Agent bus: LLM error (rc=%d is_error=%d) — queuing for retry",
                   rc, resp.is_error);
         agent_bus_log(loop->agent_bus_log_dir, "err", &msg, "LLM error");
-        pending_bus_save(ws, &msg);
+        pending_bus_save(pending_dir, &msg);
         return;
     }
 
     /* Success — clear any pending queue that was just caught up on */
     if (has_pending) {
-        pending_bus_clear(ws);
+        pending_bus_clear(pending_dir);
     }
 
     /* Update session context */
