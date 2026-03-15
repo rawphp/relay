@@ -97,6 +97,7 @@ Once the daemon is running, send these commands in Telegram:
 | `/sessions` | Browse resumable sessions |
 | `/workspace` | Show current workspace info |
 | `/reload` | Reload config without restart |
+| `/bus` | Show recent agent bus activity |
 
 ![Telegram commands](/screenshots/telegram-commands.png)
 
@@ -114,7 +115,42 @@ henry=~/henry
 
 Each agent is installed separately with `install.sh --name <name> --home <path>` and controlled via its own `~/NAME/bin/relay` script.
 
-Agents can communicate via the **agent bus** (configured with `agent_bus_socket` in `relay.conf`). See [Architecture](../developer/architecture#agent-bus) for details.
+### Agent Bus
+
+Agents automatically discover each other and can exchange messages without human intervention. The agent bus is enabled by default.
+
+**How it works:**
+
+1. When an agent starts, it **advertises** itself to `~/.relay.d/` with its name, PID, and socket path
+2. Every 60 seconds, each agent **rescans** the directory and discovers new peers
+3. When a user asks an agent to contact another (e.g. "ask Ash how he's doing"), the agent emits a **bus directive** in its response
+4. The daemon **strips the directive** from the Telegram message, sends it to the target agent's socket, and appends a status note
+
+**What you'll see in Telegram:**
+
+- When you tell Kai to message Ash, you'll see Kai's response with a note like "(sent message to Ash)"
+- When Ash processes the message and replies, you'll get a notification: `[Bus] Ash → Kai: <response preview>`
+- Use `/bus` to see the last 10 agent bus exchanges on demand
+
+**Offline persistence:**
+
+If the target agent's daemon is down when a message is sent, the message is saved to a **dead drop** (`~/.relay.d/inbox/{agent}/`). When that agent's daemon starts up, it processes the pending messages automatically and sends replies.
+
+**Troubleshooting:**
+
+```bash
+# Check which agents are advertising
+ls ~/.relay.d/*.json
+
+# Check an agent's advertisement
+cat ~/.relay.d/kai.json
+
+# Check for pending dead drop messages
+ls ~/.relay.d/inbox/
+
+# View bus activity log
+cat ~/NAME/data/transcripts/agent-bus.jsonl | tail -10
+```
 
 ## Common Operations
 
