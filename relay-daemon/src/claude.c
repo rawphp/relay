@@ -161,7 +161,41 @@ int claude_parse_response(const char *json, claude_response_t *resp)
         return RELAY_ERR_PARSE;
     }
 
-    cJSON *root = cJSON_Parse(json);
+    /* Claude Code outputs JSONL (multiple JSON objects, one per line).
+     * The result object is the LAST line with "type":"result".
+     * Find it by scanning backwards from the end. */
+    const char *result_line = NULL;
+    const char *p = json;
+    while (*p) {
+        /* Skip whitespace */
+        while (*p == '\n' || *p == '\r' || *p == ' ') p++;
+        if (*p == '\0') break;
+
+        /* Find end of this line */
+        const char *eol = p;
+        while (*eol && *eol != '\n') eol++;
+
+        /* Check if this line contains "type":"result" */
+        if (eol - p > 15) { /* minimum viable result JSON */
+            /* Quick substring check before expensive parse */
+            const char *found = NULL;
+            for (const char *s = p; s < eol - 14; s++) {
+                if (memcmp(s, "\"type\":\"result\"", 15) == 0) {
+                    found = s;
+                    break;
+                }
+            }
+            if (found) {
+                result_line = p;
+            }
+        }
+
+        p = (*eol) ? eol + 1 : eol;
+    }
+
+    /* Parse the result line, or fall back to the full input */
+    const char *to_parse = result_line ? result_line : json;
+    cJSON *root = cJSON_Parse(to_parse);
     if (!root) {
         return RELAY_ERR_PARSE;
     }
