@@ -153,6 +153,45 @@ void peer_registry_probe_all(void)
     }
 }
 
+int peer_registry_build_context(char *buf, size_t max)
+{
+    if (!buf || max == 0) return 0;
+    buf[0] = '\0';
+
+    if (g_peer_count == 0) return 0;
+
+    int off = 0;
+    off += snprintf(buf + off, max - (size_t)off,
+        "\n## Peer Agents on the Bus\n\n"
+        "You can communicate with other agents via the agent bus. "
+        "To send a message, include a directive in your response:\n"
+        "[AGENT_BUS_SEND to=<name>] <message text>\n\n"
+        "Available agents:\n");
+
+    for (int i = 0; i < g_peer_count && (size_t)off < max - 1; i++) {
+        const peer_entry_t *p = &g_peers[i];
+        off += snprintf(buf + off, max - (size_t)off,
+            "- %s (%s)\n",
+            p->name, p->is_alive ? "online" : "offline");
+    }
+
+    off += snprintf(buf + off, max - (size_t)off,
+        "\nOnly online agents will receive your message.\n");
+
+    return off;
+}
+
+const peer_entry_t *peer_registry_find(const char *name)
+{
+    if (!name) return NULL;
+    for (int i = 0; i < g_peer_count; i++) {
+        if (strcmp(g_peers[i].name, name) == 0) {
+            return &g_peers[i];
+        }
+    }
+    return NULL;
+}
+
 void peer_registry_destroy(void)
 {
     g_peer_count = 0;

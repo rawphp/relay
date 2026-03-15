@@ -1,5 +1,6 @@
 #include "claude.h"
 #include "llm_prompt.h"
+#include "peer_registry.h"
 
 #include <cJSON/cJSON.h>
 
@@ -76,6 +77,12 @@ void claude_build_system_prompt(char *buf, size_t max,
         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
         tm.tm_hour, tm.tm_min, tz_label, days[tm.tm_wday],
         ws_line);
+
+    /* Append peer agent context if available */
+    size_t used = strlen(buf);
+    if (used + 1 < max) {
+        peer_registry_build_context(buf + used, max - used);
+    }
 }
 
 /* Populate resp with a human-readable error when the process spawn fails.

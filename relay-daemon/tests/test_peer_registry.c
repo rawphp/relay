@@ -303,6 +303,71 @@ static void test_peer_probe_all(void)
     cleanup_registry();
 }
 
+/* ── Context builder tests ────────────────────────────────────────────────── */
+
+/* build_context with peers produces the expected block */
+static void test_peer_context_with_peers(void)
+{
+    write_registry("ash=/Users/tom/ash\nnova=/Users/tom/nova\n");
+    peer_registry_init(g_regfile, "kai");
+
+    /* Mark ash alive, nova dead */
+    /* We can't easily set is_alive without probing, so we'll just test
+       that the context block is generated with offline status */
+    char buf[2048];
+    int len = peer_registry_build_context(buf, sizeof(buf));
+    TEST_ASSERT_TRUE(len > 0);
+    TEST_ASSERT_NOT_NULL(strstr(buf, "Peer Agents"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "ash"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "nova"));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "AGENT_BUS_SEND"));
+
+    cleanup_registry();
+}
+
+/* build_context with no peers returns 0 */
+static void test_peer_context_no_peers(void)
+{
+    write_registry("kai=/Users/tom/kai\n");
+    peer_registry_init(g_regfile, "kai");
+
+    char buf[2048];
+    int len = peer_registry_build_context(buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_INT(0, len);
+    TEST_ASSERT_EQUAL_STRING("", buf);
+
+    cleanup_registry();
+}
+
+/* build_context shows online/offline status */
+static void test_peer_context_shows_status(void)
+{
+    write_registry("ash=/nonexistent/path\n");
+    peer_registry_init(g_regfile, "kai");
+
+    char buf[2048];
+    peer_registry_build_context(buf, sizeof(buf));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "offline"));
+
+    cleanup_registry();
+}
+
+/* find returns the correct peer */
+static void test_peer_find_existing(void)
+{
+    write_registry("ash=/Users/tom/ash\nnova=/Users/tom/nova\n");
+    peer_registry_init(g_regfile, "kai");
+
+    const peer_entry_t *p = peer_registry_find("nova");
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL_STRING("nova", p->name);
+
+    TEST_ASSERT_NULL(peer_registry_find("unknown"));
+    TEST_ASSERT_NULL(peer_registry_find(NULL));
+
+    cleanup_registry();
+}
+
 /* ── Suite registration ───────────────────────────────────────────────────── */
 
 void test_peer_registry_suite(void)
@@ -322,4 +387,8 @@ void test_peer_registry_suite(void)
     RUN_TEST(test_peer_probe_dead);
     RUN_TEST(test_peer_probe_out_of_bounds);
     RUN_TEST(test_peer_probe_all);
+    RUN_TEST(test_peer_context_with_peers);
+    RUN_TEST(test_peer_context_no_peers);
+    RUN_TEST(test_peer_context_shows_status);
+    RUN_TEST(test_peer_find_existing);
 }

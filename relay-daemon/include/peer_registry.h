@@ -7,6 +7,8 @@
  * exposes a list of known peers with derived socket paths.
  * ─────────────────────────────────────────────────────────────────────── */
 
+#include <stddef.h>
+
 #define PEER_REGISTRY_MAX 16
 
 typedef struct {
@@ -32,6 +34,15 @@ int peer_registry_probe(int index);
 
 /* Probe all peers and update their is_alive status. */
 void peer_registry_probe_all(void);
+
+/* Build a peer awareness context block for LLM injection.
+ * Writes into buf (up to max bytes). Returns number of bytes written
+ * (excluding NUL), or 0 if no peers are available.
+ * Only includes peers; caller decides where to inject. */
+int peer_registry_build_context(char *buf, size_t max);
+
+/* Look up a peer by name. Returns pointer or NULL if not found. */
+const peer_entry_t *peer_registry_find(const char *name);
 
 /* Release internal state. */
 void peer_registry_destroy(void);
