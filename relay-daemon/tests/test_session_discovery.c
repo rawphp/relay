@@ -198,9 +198,9 @@ static void test_discovery_cache_hit(void)
 {
     mock_fs_reset();
 
-    /* Set up a cache file with a pre-existing summary */
+    /* Set up a cache file with a pre-existing summary and correct version */
     mock_fs_set("/home/tom/.relay-session-cache.json",
-        "{\"cached-001\":\"Cached summary from previous scan\"}");
+        "{\"_version\":2,\"cached-001\":\"Cached summary from previous scan\"}");
 
     /* .jsonl file exists but its content shouldn't be read if cache hit */
     mock_fs_set(PROJ_DIR "/cached-001.jsonl",
@@ -214,6 +214,98 @@ static void test_discovery_cache_hit(void)
     TEST_ASSERT_EQUAL_INT(1, count);
     TEST_ASSERT_EQUAL_STRING("Cached summary from previous scan",
                              results[0].summary);
+}
+
+/* ── REQ-144: fix summary extraction ───────────────────────────────── */
+
+static void test_discovery_array_ide_opened_file_stripped(void)
+{
+    mock_fs_reset();
+
+    /* Array content where the only text item is <ide_opened_file> tag
+     * Should extract the filename as summary */
+    mock_fs_set(PROJ_DIR "/ide-only.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+        "{\"type\":\"text\",\"text\":\"<ide_opened_file>The user opened the file /Users/tom/EA/AGENTS.md in the IDE.</ide_opened_file>\"}"
+        "]}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    /* Should NOT show the raw tag — should extract filename or show something useful */
+    TEST_ASSERT_NULL(strstr(results[0].summary, "<ide_opened_file>"));
+}
+
+static void test_discovery_identity_injection_skipped(void)
+{
+    mock_fs_reset();
+
+    /* All user messages are identity injections — no real user text */
+    mock_fs_set(PROJ_DIR "/soul-only.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
+        "\"[Identity context \\u2014 pre-injected]\\n\\n"
+        "## SOUL.md\\n"
+        "# SOUL.md - Who You Are\\n\\n"
+        "*You're not a chatbot. You're not an assistant.*\"}}\n"
+        "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+        "\"I'll help you set up the project structure.\"}}\n"
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
+        "\"[Identity context \\u2014 pre-injected]\\n\\n"
+        "## SOUL.md\\n*You're not a chatbot.*\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    /* Should NOT contain SOUL.md content */
+    TEST_ASSERT_NULL(strstr(results[0].summary, "chatbot"));
+}
+
+static void test_discovery_skips_to_second_user_message(void)
+{
+    mock_fs_reset();
+
+    /* First user message is system junk, second has real text */
+    mock_fs_set(PROJ_DIR "/skip-first.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+        "{\"type\":\"text\",\"text\":\"<ide_opened_file>The user opened AGENTS.md</ide_opened_file>\"}"
+        "]}}\n"
+        "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"How can I help?\"}}\n"
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Build a REST API for users\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("Build a REST API for users", results[0].summary);
+}
+
+static void test_discovery_cache_version_invalidation(void)
+{
+    mock_fs_reset();
+
+    /* Old cache without version key — should be ignored and rebuilt */
+    mock_fs_set("/home/tom/.relay-session-cache.json",
+        "{\"old-session\":\"Stale cached summary\"}");
+
+    mock_fs_set(PROJ_DIR "/old-session.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Fresh content\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    /* Should use fresh extraction, not stale cache */
+    TEST_ASSERT_EQUAL_STRING("Fresh content", results[0].summary);
 }
 
 /* ── Suite ──────────────────────────────────────────────────────────── */
@@ -231,4 +323,9 @@ void test_session_discovery_suite(void)
     RUN_TEST(test_discovery_strips_system_prefix);
     RUN_TEST(test_discovery_strips_command_tags);
     RUN_TEST(test_discovery_cache_hit);
+    /* REQ-144 */
+    RUN_TEST(test_discovery_array_ide_opened_file_stripped);
+    RUN_TEST(test_discovery_identity_injection_skipped);
+    RUN_TEST(test_discovery_skips_to_second_user_message);
+    RUN_TEST(test_discovery_cache_version_invalidation);
 }

@@ -6,69 +6,53 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Max lines to scan per .jsonl file looking for first user message */
-#define MAX_SCAN_LINES 50
+/* Max JSONL lines to scan per file */
+#define MAX_SCAN_LINES 80
 
-/* ── System prefix detection ───────────────────────────────────────── */
+/* Cache format version — bump when extraction logic changes */
+#define CACHE_VERSION 2
 
-/* Prefixes to skip when extracting user text from content strings.
- * These are injected by Claude Code or relay, not typed by the user. */
-static int is_system_line(const char *line)
+/* ── System content detection ──────────────────────────────────────── */
+
+/* Returns 1 if the entire text is system-injected content (not user-typed) */
+static int is_system_text(const char *text)
 {
-    if (!line) return 0;
-    /* Skip whitespace */
-    while (*line == ' ' || *line == '\t') line++;
-    if (*line == '\0' || *line == '\n') return 1; /* blank line */
+    if (!text || !*text) return 1;
 
-    if (strncmp(line, "[Identity context", 17) == 0) return 1;
-    if (strncmp(line, "<command-message>", 17) == 0) return 1;
-    if (strncmp(line, "<command-name>", 14) == 0) return 1;
-    if (strncmp(line, "<command-args>", 14) == 0) return 1;
-    if (strncmp(line, "<ide_opened_file>", 17) == 0) return 1;
-    if (strncmp(line, "<ide_selection", 14) == 0) return 1;
-    if (strncmp(line, "Base directory for", 18) == 0) return 1;
-    if (strncmp(line, "## SOUL.md", 10) == 0) return 1;
-    if (strncmp(line, "## IDENTITY.md", 14) == 0) return 1;
-    if (strncmp(line, "## USER.md", 10) == 0) return 1;
-    if (strncmp(line, "## PRIORITIES.md", 16) == 0) return 1;
-    if (*line == '#' && *(line + 1) == ' ') return 1; /* markdown heading */
-    return 0;
-}
+    /* Skip leading whitespace */
+    while (*text == ' ' || *text == '\t' || *text == '\n') text++;
+    if (!*text) return 1;
 
-/* Find the first non-system line in text. Returns pointer into text. */
-static const char *skip_system_prefixes(const char *text)
-{
-    if (!text) return text;
-    const char *p = text;
-    while (*p) {
-        /* Skip system lines */
-        if (!is_system_line(p)) {
-            return p;
-        }
-        /* Advance to next line */
-        const char *eol = strchr(p, '\n');
-        if (!eol) return p; /* last line, return even if system */
-        p = eol + 1;
+    /* XML-style tags injected by Claude Code or IDE */
+    if (*text == '<') {
+        if (strncmp(text, "<ide_opened_file>", 17) == 0) return 1;
+        if (strncmp(text, "<ide_selection", 14) == 0) return 1;
+        if (strncmp(text, "<command-message>", 17) == 0) return 1;
+        if (strncmp(text, "<command-name>", 14) == 0) return 1;
+        if (strncmp(text, "<local-command-caveat>", 21) == 0) return 1;
+        if (strncmp(text, "<system-reminder>", 17) == 0) return 1;
     }
-    return p;
-}
 
-/* Extract text from <command-args>...\n content */
-static const char *extract_from_command_args(const char *text)
-{
-    const char *tag = strstr(text, "<command-args>");
-    if (!tag) return NULL;
-    tag += 14; /* skip "<command-args>" */
-    /* Skip the first token (the subcommand like "start\n") */
-    const char *nl = strchr(tag, '\n');
-    if (nl) return nl + 1;
-    return tag;
+    /* Identity injection */
+    if (strncmp(text, "[Identity context", 17) == 0) return 1;
+
+    /* SOUL.md / identity file content (markdown emphasis) */
+    if (text[0] == '*' && text[1] >= 'A' && text[1] <= 'Z') return 1;
+
+    /* Markdown headings from identity files */
+    if (text[0] == '#') return 1;
+
+    /* Config/system metadata */
+    if (strncmp(text, "Base directory for", 18) == 0) return 1;
+    if (strncmp(text, "ARGUMENTS:", 10) == 0) return 1;
+    if (strncmp(text, "TRIGGER", 7) == 0) return 1;
+    if (strncmp(text, "DO NOT TRIGGER", 14) == 0) return 1;
+
+    return 0;
 }
 
 /* ── Content extraction ────────────────────────────────────────────── */
 
-/* Copy at most max_copy chars of src into dst, NUL-terminated.
- * Stops at first newline. */
 static void copy_summary(const char *src, char *dst, size_t dst_max)
 {
     size_t max_copy = dst_max - 1;
@@ -80,10 +64,46 @@ static void copy_summary(const char *src, char *dst, size_t dst_max)
     dst[i] = '\0';
 }
 
-/* Extract text from a content value (string or array).
- * Handles system prefix stripping and command-args extraction. */
-static void extract_text_from_content(cJSON *cont, char *summary,
-                                       size_t summary_max)
+/* Extract text from <command-args> content — skip subcommand line */
+static const char *extract_from_command_args(const char *text)
+{
+    const char *tag = strstr(text, "<command-args>");
+    if (!tag) return NULL;
+    tag += 14;
+    const char *nl = strchr(tag, '\n');
+    if (nl) return nl + 1;
+    return tag;
+}
+
+/* Try to find a non-system line within a text block.
+ * Returns pointer to first usable line, or NULL if all system. */
+static const char *find_usable_line(const char *text)
+{
+    if (!text) return NULL;
+    const char *p = text;
+    int lines = 0;
+    while (*p && lines < 30) {
+        /* Skip whitespace at line start */
+        const char *line_start = p;
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (*p && *p != '\n' && !is_system_text(p)) {
+            return line_start;
+        }
+
+        /* Advance to next line */
+        const char *eol = strchr(p, '\n');
+        if (!eol) break;
+        p = eol + 1;
+        lines++;
+    }
+    return NULL;
+}
+
+/* Extract usable text from a content value (string or array).
+ * Returns 1 if a usable summary was found, 0 otherwise. */
+static int extract_text_from_content(cJSON *cont, char *summary,
+                                      size_t summary_max)
 {
     summary[0] = '\0';
 
@@ -92,24 +112,24 @@ static void extract_text_from_content(cJSON *cont, char *summary,
 
         /* Try command-args extraction first */
         const char *args_text = extract_from_command_args(text);
-        if (args_text && *args_text) {
-            const char *clean = skip_system_prefixes(args_text);
-            if (clean && *clean) {
+        if (args_text) {
+            const char *clean = find_usable_line(args_text);
+            if (clean) {
                 copy_summary(clean, summary, summary_max);
-                return;
+                return 1;
             }
         }
 
-        /* Strip system prefixes from regular text */
-        const char *clean = skip_system_prefixes(text);
-        if (clean && *clean) {
+        /* Find usable line in regular text */
+        const char *clean = find_usable_line(text);
+        if (clean) {
             copy_summary(clean, summary, summary_max);
+            return 1;
         }
-        return;
+        return 0;
     }
 
     if (cJSON_IsArray(cont)) {
-        /* VS Code IDE format: [{type:"text", text:"..."}, ...] */
         cJSON *item;
         cJSON_ArrayForEach(item, cont) {
             cJSON *item_type = cJSON_GetObjectItem(item, "type");
@@ -118,23 +138,27 @@ static void extract_text_from_content(cJSON *cont, char *summary,
                 strcmp(item_type->valuestring, "text") == 0 &&
                 cJSON_IsString(item_text)) {
                 const char *text = item_text->valuestring;
-                const char *clean = skip_system_prefixes(text);
-                if (clean && *clean) {
+                const char *clean = find_usable_line(text);
+                if (clean) {
                     copy_summary(clean, summary, summary_max);
-                    return;
+                    return 1;
                 }
             }
         }
     }
+    return 0;
 }
 
-/* Extract the first user message from a .jsonl file's content. */
+/* Extract a useful summary from .jsonl content.
+ * Scans ALL user messages (not just the first) looking for real user text.
+ * Falls back to first assistant response if no user text found. */
 static void extract_summary(const char *content, char *summary,
                              size_t summary_max)
 {
     summary[0] = '\0';
     if (!content) return;
 
+    char assistant_fallback[81] = {0};
     const char *line = content;
     int lines_scanned = 0;
 
@@ -153,15 +177,29 @@ static void extract_summary(const char *content, char *summary,
 
             if (obj) {
                 cJSON *type = cJSON_GetObjectItem(obj, "type");
-                if (cJSON_IsString(type) &&
-                    strcmp(type->valuestring, "user") == 0) {
+                if (cJSON_IsString(type)) {
                     cJSON *msg = cJSON_GetObjectItem(obj, "message");
                     if (msg) {
                         cJSON *cont = cJSON_GetObjectItem(msg, "content");
-                        extract_text_from_content(cont, summary, summary_max);
-                        if (summary[0]) {
-                            cJSON_Delete(obj);
-                            return;
+
+                        if (strcmp(type->valuestring, "user") == 0) {
+                            if (extract_text_from_content(cont, summary,
+                                                          summary_max)) {
+                                cJSON_Delete(obj);
+                                return;
+                            }
+                        } else if (strcmp(type->valuestring, "assistant") == 0
+                                   && !assistant_fallback[0]) {
+                            /* Capture first assistant response as fallback */
+                            if (cJSON_IsString(cont) &&
+                                cont->valuestring[0]) {
+                                const char *clean =
+                                    find_usable_line(cont->valuestring);
+                                if (clean) {
+                                    copy_summary(clean, assistant_fallback,
+                                                 sizeof(assistant_fallback));
+                                }
+                            }
                         }
                     }
                 }
@@ -172,6 +210,11 @@ static void extract_summary(const char *content, char *summary,
         if (!eol) break;
         line = eol + 1;
         lines_scanned++;
+    }
+
+    /* No user text found — use assistant fallback */
+    if (assistant_fallback[0]) {
+        copy_summary(assistant_fallback, summary, summary_max);
     }
 }
 
@@ -188,12 +231,28 @@ static cJSON *load_cache(relay_fs_t *fs, const char *home)
 
     cJSON *cache = cJSON_Parse(data);
     free(data);
+    if (!cache) return NULL;
+
+    /* Check cache version — if missing or wrong, discard */
+    cJSON *ver = cJSON_GetObjectItem(cache, "_version");
+    if (!cJSON_IsNumber(ver) || (int)ver->valuedouble != CACHE_VERSION) {
+        cJSON_Delete(cache);
+        return NULL;
+    }
+
     return cache;
 }
 
 static void save_cache(relay_fs_t *fs, const char *home, cJSON *cache)
 {
     if (!cache) return;
+
+    /* Ensure version is set */
+    cJSON *ver = cJSON_GetObjectItem(cache, "_version");
+    if (!ver) {
+        cJSON_AddNumberToObject(cache, "_version", CACHE_VERSION);
+    }
+
     char cache_path[RELAY_MAX_PATH];
     snprintf(cache_path, sizeof(cache_path),
              "%s/.relay-session-cache.json", home);
@@ -217,11 +276,9 @@ int session_discovery_scan(relay_fs_t *fs, const char *workspace_path,
         return RELAY_OK;
     }
 
-    /* Encode workspace path to .claude directory name */
     char encoded[RELAY_MAX_PATH];
     path_util_encode_claude_dir(workspace_path, encoded, sizeof(encoded));
 
-    /* Build the full directory path */
     char dir_path[RELAY_MAX_PATH];
     snprintf(dir_path, sizeof(dir_path), "%s/.claude/projects/%s",
              home, encoded);
@@ -236,11 +293,11 @@ int session_discovery_scan(relay_fs_t *fs, const char *workspace_path,
         return RELAY_OK;
     }
 
-    /* Load summary cache */
     cJSON *cache = load_cache(fs, home);
     int cache_dirty = 0;
     if (!cache) {
         cache = cJSON_CreateObject();
+        cache_dirty = 1; /* Will need version written */
     }
 
     int found = 0;
@@ -263,7 +320,6 @@ int session_discovery_scan(relay_fs_t *fs, const char *workspace_path,
             copy_summary(cached->valuestring, entry->summary,
                          sizeof(entry->summary));
         } else {
-            /* Extract from .jsonl file */
             char file_path[RELAY_MAX_PATH];
             snprintf(file_path, sizeof(file_path), "%s/%s",
                      dir_path, names[i]);
@@ -271,7 +327,6 @@ int session_discovery_scan(relay_fs_t *fs, const char *workspace_path,
             extract_summary(content, entry->summary, sizeof(entry->summary));
             if (content) free(content);
 
-            /* Cache the result */
             if (entry->summary[0]) {
                 cJSON_AddStringToObject(cache, session_id, entry->summary);
                 cache_dirty = 1;
@@ -281,7 +336,6 @@ int session_discovery_scan(relay_fs_t *fs, const char *workspace_path,
         found++;
     }
 
-    /* Persist cache if we added new entries */
     if (cache_dirty) {
         save_cache(fs, home, cache);
     }
