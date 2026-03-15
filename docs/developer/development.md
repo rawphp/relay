@@ -208,6 +208,22 @@ No Makefile changes needed — `src/mymodule.c` is auto-discovered.
 3. Add config keys (e.g. `newprovider_binary`) to `templates/config/relay.conf.template`
 4. Write tests in `tests/test_newprovider.c`
 
+## Documentation Deployment
+
+The docs site at `rawphp.github.io/relay/` is built with [VitePress](https://vitepress.dev/) and deployed automatically via GitHub Actions.
+
+**How it works:** On every push to `main` that changes files in `docs/`, the `.github/workflows/deploy-docs.yml` workflow builds the VitePress site and deploys it to GitHub Pages.
+
+**One-time setup (required):** In the GitHub repo settings, go to **Settings > Pages** and set the **Source** to **GitHub Actions** (not "Deploy from a branch"). Without this, the workflow will run but the site won't be published.
+
+**Local preview:**
+
+```bash
+npm run docs:dev      # dev server at localhost:5173
+npm run docs:build    # production build to docs/.vitepress/dist/
+npm run docs:preview  # preview the production build
+```
+
 ## Adding a New Message Platform
 
 1. Create `relay-daemon/src/newplatform.c`
