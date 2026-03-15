@@ -32,6 +32,7 @@ static struct tm *mock_clock_localtime_r(const time_t *t, struct tm *result)
     return result;
 }
 
+__attribute__((unused))
 static relay_clock_t g_mock_clock = {
     .now = mock_clock_now,
     .localtime_r = mock_clock_localtime_r
@@ -171,6 +172,7 @@ static int mock_fs_list_dir(const char *dir, const char *suffix,
     return count;
 }
 
+__attribute__((unused))
 static relay_fs_t g_mock_fs = {
     .read_file = mock_fs_read_file,
     .write_file = mock_fs_write_file,
@@ -243,6 +245,7 @@ static int mock_http_get_to_file(const char *url, const char *local_path)
     return RELAY_OK;
 }
 
+__attribute__((unused))
 static relay_http_t g_mock_http = {
     .get = mock_http_get,
     .post = mock_http_post,
@@ -416,6 +419,7 @@ static int mock_proc_spawn_streaming(const char *bin, const char **args,
     return RELAY_OK;
 }
 
+__attribute__((unused))
 static relay_proc_t g_mock_proc = {
     .spawn = mock_proc_spawn,
     .spawn_streaming = mock_proc_spawn_streaming

@@ -83,4 +83,29 @@ perf-report:
 		--output-dir $(PERF_REPORT_DIR) \
 		--baseline $(PERF_BASELINE)
 
-.PHONY: test clean perf-cpu perf-report
+# ── CI-parity check (GCC on macOS) ────────────────────────────────── #
+# Mirrors the GitHub Actions ubuntu-latest build using Homebrew GCC.
+# Run before pushing to catch GCC-specific warnings locally.
+
+GCC    ?= $(shell ls /opt/homebrew/bin/gcc-1* 2>/dev/null | sort -V | tail -1)
+CI_FLAGS = -Wall -Wextra -Werror -pedantic -std=c11 -D_DEFAULT_SOURCE \
+           -Wno-format-truncation -Wno-stringop-truncation \
+           -Iinclude -Ivendor -O2 -DRELAY_VERSION='"$(VERSION)"'
+
+ci: clean build tmp
+	@if [ -z "$(GCC)" ]; then echo "GCC not found. Run: brew install gcc"; exit 1; fi
+	@echo "=== CI compile check (GCC, per-file) ==="
+	@fail=0; for f in src/*.c; do \
+		$(GCC) $(CI_FLAGS) -c -o /dev/null $$f 2>&1 && echo "  OK  $$f" || { echo "  FAIL $$f"; fail=1; }; \
+	done; \
+	echo ""; \
+	if [ $$fail -eq 1 ]; then echo "CI check FAILED — fix errors above before pushing."; exit 1; \
+	else echo "CI check PASSED — all source files compile clean with GCC."; fi
+	@echo ""
+	@echo "=== CI test build (GCC) ==="
+	$(GCC) $(CI_FLAGS) -DTESTING -DTEST_TMP_DIR='"tmp"' -o build/test_runner \
+		tests/test_runner.c tests/stubs.c $(TEST_SRC) $(TESTABLE_SRC) $(VENDOR_SRC) \
+		-lcurl -lpthread 2>&1 || (echo "CI TEST BUILD FAILED" && exit 1)
+	./build/test_runner 2>&1 | tee tmp/test-out.txt
+
+.PHONY: test clean ci perf-cpu perf-report
