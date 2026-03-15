@@ -17,6 +17,12 @@ TESTABLE_SRC = $(filter-out src/main.c, $(wildcard src/*.c))
 
 UNAME := $(shell uname)
 
+# GCC-only: suppress false-positive truncation warnings on snprintf
+# (Clang doesn't emit these and doesn't recognise the flags)
+ifneq ($(UNAME), Darwin)
+CFLAGS += -Wno-format-truncation -Wno-stringop-truncation
+endif
+
 # ── Production build ────────────────────────────────────────────────── #
 
 relay: build $(OBJ) build/cJSON.o
