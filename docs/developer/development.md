@@ -133,6 +133,7 @@ mock_fs_reset();                          // clear all files
 mock_fs_set("/path/to/file", "content");  // create/overwrite a file
 // .read_file, .write_file, .file_exists, .append_file, .delete_file
 // all operate on the in-memory store — no disk I/O
+// .list_dir(dir, suffix, names, max) — returns matching filenames (used by session discovery)
 ```
 
 ### `g_mock_http` — HTTP responses
@@ -200,6 +201,8 @@ if (rc != RELAY_OK) { /* actual error */ }
 5. Implement until `make test` passes green
 
 No Makefile changes needed — `src/mymodule.c` is auto-discovered.
+
+**For Telegram command handlers:** Follow the same pattern but also register the command in the `commands[]` array in `telegram.c` and add dispatch logic in `event_loop.c`. See `cmd_workspace.c` and `cmd_sessions.c` for examples.
 
 ## Adding a New LLM Provider
 
