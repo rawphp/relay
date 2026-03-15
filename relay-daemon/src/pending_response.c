@@ -84,8 +84,8 @@ int pending_response_load(const char *workspace,
 
     char *buf = malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return 0; }
-    fread(buf, 1, (size_t)sz, f);
-    buf[sz] = '\0';
+    size_t nread = fread(buf, 1, (size_t)sz, f);
+    buf[nread] = '\0';
     fclose(f);
 
     cJSON *root = cJSON_Parse(buf);
