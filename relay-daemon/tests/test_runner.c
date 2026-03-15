@@ -43,6 +43,7 @@ extern void test_spawn_diag_suite(void);
 extern void test_voice_pipeline_suite(void);
 extern void test_session_discovery_suite(void);
 extern void test_cmd_sessions_suite(void);
+extern void test_peer_registry_suite(void);
 
 int main(void)
 {
@@ -86,6 +87,7 @@ int main(void)
     test_voice_pipeline_suite();
     test_session_discovery_suite();
     test_cmd_sessions_suite();
+    test_peer_registry_suite();
 
     return UNITY_END();
 }
