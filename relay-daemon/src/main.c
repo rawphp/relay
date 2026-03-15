@@ -32,6 +32,7 @@
 #include <sys/select.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <pthread.h>
 #include <termios.h>
