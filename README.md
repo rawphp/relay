@@ -41,7 +41,7 @@ Send a message. The daemon routes it to Claude Code in your active workspace, st
 | **Persistent sessions** | Conversations survive daemon restarts — picks up where you left off |
 | **Identity files** | Give your agent a personality, goals, and memory that persist across sessions |
 | **Memory system** | Optional semantic search over past conversations — relevant context injected automatically |
-| **Agent bus** | Multiple relay agents can message each other via Unix socket |
+| **Agent bus** | Agents discover each other automatically, exchange messages, and persist offline messages — with human observer notifications |
 | **No cloud** | Runs entirely on your machine — only outbound connections are to Telegram and your LLM |
 
 ---
@@ -64,6 +64,7 @@ Send a message. The daemon routes it to Claude Code in your active workspace, st
 | `/sessions` | Browse resumable sessions |
 | `/workspace` | Show current workspace info |
 | `/reload` | Reload config without restart |
+| `/bus` | Show recent agent bus activity |
 
 ---
 

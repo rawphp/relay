@@ -143,11 +143,21 @@ The `provider` key per workspace is optional — it overrides the top-level `llm
 | `memory_search_top_k` | `3` | Number of memories to inject per message |
 | `memory_search_threshold` | `0.5` | Minimum similarity score |
 
+### Agent Bus
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `agent_bus_enabled` | `1` | Enable inter-agent messaging (0 to disable) |
+| `agent_bus_socket` | `{install_dir}/data/relay.sock` | Unix socket path — absolute path recommended |
+| `agent_bus_rate_limit` | `10` | Max inbound connections per second |
+| `agent_bus_max_depth` | `3` | Circuit breaker — max conversation depth before dropping |
+
+The agent bus is enabled by default. Agents discover each other automatically via `~/.relay.d/` advertisements. See [Operations — Agent Bus](operations#agent-bus) for usage.
+
 ### Other Keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `agent_bus_socket` | — | Unix socket path for inter-agent messaging |
 | `telegram_group_chat_id` | — | Group chat ID for group mode |
 | `parent_telegram_user_id` | — | Parent agent's user ID (for agent-to-agent alerts) |
 | `vision_model` | `moondream` | Local vision model for photo analysis |

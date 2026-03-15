@@ -123,7 +123,7 @@ if (resp.session_id[0]) session_set(loop->deps.sessions, session_key, resp.sessi
 
 **Error codes** (from `relay.h`): `RELAY_OK=0`, `RELAY_ERR=-1`, `RELAY_ERR_NOTFOUND=-2`, `RELAY_ERR_PARSE=-3`, `RELAY_ERR_TIMEOUT=-4`, `RELAY_ERR_AUTH=-5`, `RELAY_ERR_IO=-6`, `RELAY_ERR_NOMEM=-7`, `RELAY_ERR_INVALID=-8`, `RELAY_ERR_NETWORK=-9`, `RELAY_ERR_FULL=-10`
 
-**Agent bus** (`agent_bus.c`): Unix domain socket for inter-agent messaging. `agent_bus_accept_message` returns `RELAY_ERR_NOTFOUND` (not `RELAY_ERR`) when no message is available (EAGAIN).
+**Agent bus** (`agent_bus.c`, `peer_registry.c`, `agent_advertise.c`, `bus_directive.c`, `bus_dead_drop.c`): Inter-agent messaging via Unix domain sockets. Agents advertise themselves to `~/.relay.d/{name}.json` on startup (PID, socket path). Peers scan this directory every 60s. `bus_directive.c` parses `[AGENT_BUS_SEND to=<name>]` directives from LLM output and routes messages. `bus_dead_drop.c` persists messages for offline agents in `~/.relay.d/inbox/`. `agent_bus_accept_message` returns `RELAY_ERR_NOTFOUND` (not `RELAY_ERR`) when no message is available (EAGAIN). Bus LLM calls use fresh sessions (no `--resume`) and the prompt says "Reply directly. Do NOT use AGENT_BUS_SEND" to prevent recursion.
 
 **Command handlers**: Telegram commands are dispatched in `event_loop.c` to dedicated handlers:
 - `cmd_workspace.c` — `/space`, `/spaces`, `/workspace`, `/close`, `/clear`
