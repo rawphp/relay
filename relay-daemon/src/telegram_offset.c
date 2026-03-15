@@ -55,7 +55,8 @@ long long telegram_offset_load(const char *workspace)
     }
 
     long long offset = 0;
-    fscanf(f, "%lld", &offset);
+    if (fscanf(f, "%lld", &offset) != 1)
+        offset = 0;
     fclose(f);
 
     return (offset > 0) ? offset : 0;
