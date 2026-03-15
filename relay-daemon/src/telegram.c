@@ -571,6 +571,7 @@ int telegram_register_commands(telegram_t *tg)
         { "sessions",  "Browse resumable sessions"          },
         { "workspace", "Show current workspace info"        },
         { "reload",    "Reload config without restart"      },
+        { "bus",       "Show recent agent bus activity"      },
     };
     int ncommands = (int)(sizeof(commands) / sizeof(commands[0]));
 

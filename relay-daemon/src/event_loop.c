@@ -1443,6 +1443,78 @@ static void handle_message(event_loop_t *loop, telegram_message_t *msg)
             profiler_clear_context();
             return;
         }
+        if (strcmp(msg->text, "/bus") == 0) {
+            /* Read recent agent bus log entries */
+            char reply[4000];
+            int off = 0;
+            off += snprintf(reply + off, sizeof(reply) - (size_t)off,
+                            "Agent Bus — recent activity:\n\n");
+
+            char bus_log_path[RELAY_MAX_PATH];
+            snprintf(bus_log_path, sizeof(bus_log_path),
+                     "%s/agent-bus.jsonl", loop->agent_bus_log_dir);
+
+            FILE *bf = fopen(bus_log_path, "r");
+            if (!bf) {
+                snprintf(reply, sizeof(reply), "No agent bus activity.");
+            } else {
+                /* Read last 10 entries by scanning the whole file
+                 * (bus log is small — typically < 100 lines) */
+                char lines[10][1024];
+                int line_count = 0;
+                int line_idx = 0;
+                char line_buf[1024];
+                while (fgets(line_buf, sizeof(line_buf), bf)) {
+                    snprintf(lines[line_idx % 10], sizeof(lines[0]),
+                             "%s", line_buf);
+                    line_idx++;
+                    if (line_count < 10) line_count++;
+                }
+                fclose(bf);
+
+                if (line_count == 0) {
+                    snprintf(reply, sizeof(reply), "No agent bus activity.");
+                } else {
+                    int start = (line_idx >= 10) ? line_idx - 10 : 0;
+                    for (int i = 0; i < line_count && (size_t)off < sizeof(reply) - 100; i++) {
+                        int idx = (start + i) % 10;
+                        /* Parse JSON line for display */
+                        cJSON *entry = cJSON_Parse(lines[idx]);
+                        if (!entry) continue;
+                        cJSON *j_dir  = cJSON_GetObjectItem(entry, "direction");
+                        cJSON *j_from = cJSON_GetObjectItem(entry, "from");
+                        cJSON *j_text = cJSON_GetObjectItem(entry, "text");
+                        cJSON *j_addr = cJSON_GetObjectItem(entry, "addressed_to");
+                        cJSON *j_resp = cJSON_GetObjectItem(entry, "response");
+
+                        const char *dir  = cJSON_IsString(j_dir)  ? j_dir->valuestring  : "?";
+                        const char *from = cJSON_IsString(j_from) ? j_from->valuestring : "?";
+                        const char *text = cJSON_IsString(j_text) ? j_text->valuestring : "";
+
+                        if (strcmp(dir, "in") == 0) {
+                            off += snprintf(reply + off, sizeof(reply) - (size_t)off,
+                                "← %s: %.100s\n", from, text);
+                        } else if (strcmp(dir, "out") == 0 && cJSON_IsString(j_resp)) {
+                            const char *to = cJSON_IsString(j_addr) ? j_addr->valuestring : from;
+                            off += snprintf(reply + off, sizeof(reply) - (size_t)off,
+                                "→ %s: %.100s\n", to, j_resp->valuestring);
+                        }
+
+                        cJSON_Delete(entry);
+                    }
+                    if (off <= 40) {
+                        snprintf(reply, sizeof(reply), "No agent bus activity.");
+                    }
+                }
+            }
+
+            send_telegram(loop, msg->chat_id, reply);
+            profiler_emit_event("request.total",
+                                profiler_timer_elapsed_ms(&total_timer),
+                                "ok", "command_bus");
+            profiler_clear_context();
+            return;
+        }
         if (strcmp(msg->text, "/start") == 0 ||
             strcmp(msg->text, "/help") == 0) {
             char help_msg[512];
