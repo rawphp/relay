@@ -142,7 +142,7 @@ static void test_pid_file_uses_0600(void)
 
     char pid_str[16];
     snprintf(pid_str, sizeof(pid_str), "%d\n", (int)getpid());
-    write(fd, pid_str, strlen(pid_str));
+    (void)write(fd, pid_str, strlen(pid_str));
     close(fd);
 
     TEST_ASSERT_EQUAL_HEX(0600, file_mode(path));

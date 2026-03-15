@@ -39,8 +39,8 @@ static char *read_tmplog(void)
     long sz = ftell(f);
     rewind(f);
     char *buf = malloc((size_t)sz + 1);
-    fread(buf, 1, (size_t)sz, f);
-    buf[sz] = '\0';
+    size_t nread = fread(buf, 1, (size_t)sz, f);
+    buf[nread] = '\0';
     fclose(f);
     return buf;
 }
