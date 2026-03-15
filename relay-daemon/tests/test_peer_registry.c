@@ -4,7 +4,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -198,6 +200,109 @@ static void test_peer_registry_tilde_path(void)
     cleanup_registry();
 }
 
+/* ── Probe tests ──────────────────────────────────────────────────────────── */
+
+/* Helper: create a listening Unix socket, return fd */
+static int create_listening_socket(const char *path)
+{
+    unlink(path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(fd);
+        return -1;
+    }
+    if (listen(fd, 1) < 0) {
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    return fd;
+}
+
+/* Probe returns 1 for a peer with a live socket */
+static void test_peer_probe_alive(void)
+{
+    /* Create a socket that the peer "ash" would listen on */
+    char sockpath[256];
+    snprintf(sockpath, sizeof(sockpath),
+             TEST_TMP_DIR "/probe_alive_%d/data/relay.sock", (int)getpid());
+
+    /* Create the directory structure */
+    char dir1[256], dir2[256];
+    snprintf(dir1, sizeof(dir1), TEST_TMP_DIR "/probe_alive_%d", (int)getpid());
+    snprintf(dir2, sizeof(dir2), TEST_TMP_DIR "/probe_alive_%d/data", (int)getpid());
+    mkdir(dir1, 0755);
+    mkdir(dir2, 0755);
+
+    int listen_fd = create_listening_socket(sockpath);
+    TEST_ASSERT_TRUE(listen_fd >= 0);
+
+    /* Register ash pointing to this temp directory */
+    char regcontent[512];
+    snprintf(regcontent, sizeof(regcontent), "ash=%s\n", dir1);
+    write_registry(regcontent);
+    peer_registry_init(g_regfile, "kai");
+    TEST_ASSERT_EQUAL_INT(1, peer_registry_count());
+
+    /* Probe should succeed */
+    int alive = peer_registry_probe(0);
+    TEST_ASSERT_EQUAL_INT(1, alive);
+    TEST_ASSERT_EQUAL_INT(1, peer_registry_get(0)->is_alive);
+
+    close(listen_fd);
+    unlink(sockpath);
+    rmdir(dir2);
+    rmdir(dir1);
+    cleanup_registry();
+}
+
+/* Probe returns 0 for a peer whose socket doesn't exist */
+static void test_peer_probe_dead(void)
+{
+    write_registry("ash=/nonexistent/agent/path\n");
+    peer_registry_init(g_regfile, "kai");
+    TEST_ASSERT_EQUAL_INT(1, peer_registry_count());
+
+    int alive = peer_registry_probe(0);
+    TEST_ASSERT_EQUAL_INT(0, alive);
+    TEST_ASSERT_EQUAL_INT(0, peer_registry_get(0)->is_alive);
+
+    cleanup_registry();
+}
+
+/* Probe with out-of-bounds index returns 0 */
+static void test_peer_probe_out_of_bounds(void)
+{
+    write_registry("ash=/Users/tom/ash\n");
+    peer_registry_init(g_regfile, "kai");
+
+    TEST_ASSERT_EQUAL_INT(0, peer_registry_probe(-1));
+    TEST_ASSERT_EQUAL_INT(0, peer_registry_probe(5));
+
+    cleanup_registry();
+}
+
+/* probe_all updates is_alive on all entries */
+static void test_peer_probe_all(void)
+{
+    write_registry("ash=/nonexistent/one\nnova=/nonexistent/two\n");
+    peer_registry_init(g_regfile, "kai");
+    TEST_ASSERT_EQUAL_INT(2, peer_registry_count());
+
+    peer_registry_probe_all();
+    TEST_ASSERT_EQUAL_INT(0, peer_registry_get(0)->is_alive);
+    TEST_ASSERT_EQUAL_INT(0, peer_registry_get(1)->is_alive);
+
+    cleanup_registry();
+}
+
 /* ── Suite registration ───────────────────────────────────────────────────── */
 
 void test_peer_registry_suite(void)
@@ -213,4 +318,8 @@ void test_peer_registry_suite(void)
     RUN_TEST(test_peer_registry_get_out_of_bounds);
     RUN_TEST(test_peer_registry_multiple_peers);
     RUN_TEST(test_peer_registry_tilde_path);
+    RUN_TEST(test_peer_probe_alive);
+    RUN_TEST(test_peer_probe_dead);
+    RUN_TEST(test_peer_probe_out_of_bounds);
+    RUN_TEST(test_peer_probe_all);
 }

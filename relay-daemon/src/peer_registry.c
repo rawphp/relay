@@ -2,8 +2,13 @@
 #include "relay.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 /* ── Module state ──────────────────────────────────────────────────────── */
 
@@ -96,6 +101,56 @@ const peer_entry_t *peer_registry_get(int index)
 {
     if (index < 0 || index >= g_peer_count) return NULL;
     return &g_peers[index];
+}
+
+int peer_registry_probe(int index)
+{
+    if (index < 0 || index >= g_peer_count) return 0;
+
+    peer_entry_t *p = &g_peers[index];
+    p->is_alive = 0;
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+
+    /* Non-blocking connect with short timeout */
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", p->socket_path);
+
+    int rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (rc == 0) {
+        /* Connected immediately */
+        p->is_alive = 1;
+    } else if (errno == EINPROGRESS) {
+        /* Wait briefly for connection to complete */
+        fd_set wfds;
+        FD_ZERO(&wfds);
+        FD_SET(fd, &wfds);
+        struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 }; /* 500ms */
+        if (select(fd + 1, NULL, &wfds, NULL, &tv) > 0) {
+            int so_err = 0;
+            socklen_t len = sizeof(so_err);
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_err, &len);
+            if (so_err == 0) p->is_alive = 1;
+        }
+    }
+
+    close(fd);
+    return p->is_alive;
+}
+
+void peer_registry_probe_all(void)
+{
+    for (int i = 0; i < g_peer_count; i++) {
+        peer_registry_probe(i);
+    }
 }
 
 void peer_registry_destroy(void)

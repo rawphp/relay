@@ -26,6 +26,13 @@ int peer_registry_count(void);
 /* Get peer by index. Returns NULL if out of bounds. */
 const peer_entry_t *peer_registry_get(int index);
 
+/* Probe a single peer's socket for liveness.
+ * Returns 1 if reachable, 0 if not. Updates is_alive on the entry. */
+int peer_registry_probe(int index);
+
+/* Probe all peers and update their is_alive status. */
+void peer_registry_probe_all(void);
+
 /* Release internal state. */
 void peer_registry_destroy(void);
 
