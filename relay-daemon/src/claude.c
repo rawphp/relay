@@ -161,43 +161,66 @@ int claude_parse_response(const char *json, claude_response_t *resp)
         return RELAY_ERR_PARSE;
     }
 
-    /* Claude Code outputs JSONL (multiple JSON objects, one per line).
-     * The result object is the LAST line with "type":"result".
-     * Find it by scanning backwards from the end. */
-    const char *result_line = NULL;
-    const char *p = json;
-    while (*p) {
-        /* Skip whitespace */
-        while (*p == '\n' || *p == '\r' || *p == ' ') p++;
-        if (*p == '\0') break;
-
-        /* Find end of this line */
-        const char *eol = p;
-        while (*eol && *eol != '\n') eol++;
-
-        /* Check if this line contains "type":"result" */
-        if (eol - p > 15) { /* minimum viable result JSON */
-            /* Quick substring check before expensive parse */
-            const char *found = NULL;
-            for (const char *s = p; s < eol - 14; s++) {
-                if (memcmp(s, "\"type\":\"result\"", 15) == 0) {
-                    found = s;
-                    break;
-                }
-            }
-            if (found) {
-                result_line = p;
-            }
-        }
-
-        p = (*eol) ? eol + 1 : eol;
-    }
-
-    /* Parse the result line, or fall back to the full input */
-    const char *to_parse = result_line ? result_line : json;
-    cJSON *root = cJSON_Parse(to_parse);
+    /* Claude Code outputs either:
+     * 1. A JSON array on one line: [{init},{assistant},{result}]
+     * 2. JSONL (one object per line): {init}\n{assistant}\n{result}
+     * 3. A single JSON object (legacy): {result}
+     *
+     * In all cases, we need the object with "type":"result". */
+    cJSON *root = cJSON_Parse(json);
     if (!root) {
         return RELAY_ERR_PARSE;
+    }
+
+    /* If it's an array, find the element with "type":"result" */
+    if (cJSON_IsArray(root)) {
+        cJSON *result_obj = NULL;
+        cJSON *item = NULL;
+        cJSON_ArrayForEach(item, root) {
+            cJSON *type = cJSON_GetObjectItem(item, "type");
+            if (cJSON_IsString(type) &&
+                strcmp(type->valuestring, "result") == 0) {
+                result_obj = item;
+            }
+        }
+        if (result_obj) {
+            /* Detach from array so we can delete the array but keep this */
+            cJSON *detached = cJSON_Duplicate(result_obj, 1);
+            cJSON_Delete(root);
+            root = detached;
+            if (!root) return RELAY_ERR_PARSE;
+        } else {
+            /* No result element — use last array element as fallback */
+            int sz = cJSON_GetArraySize(root);
+            if (sz > 0) {
+                cJSON *last = cJSON_GetArrayItem(root, sz - 1);
+                cJSON *detached = cJSON_Duplicate(last, 1);
+                cJSON_Delete(root);
+                root = detached;
+                if (!root) return RELAY_ERR_PARSE;
+            }
+        }
+    }
+
+    /* If it's still not an object (shouldn't happen), try JSONL scan */
+    if (!cJSON_IsObject(root)) {
+        cJSON_Delete(root);
+        /* Scan for last line containing "type":"result" */
+        const char *result_start = NULL;
+        const char *needle = "\"type\":\"result\"";
+        const char *p = json;
+        while ((p = strstr(p, needle)) != NULL) {
+            /* Walk back to find the start of this JSON object */
+            const char *obj_start = p;
+            while (obj_start > json && *(obj_start - 1) != '\n' && *(obj_start - 1) != '[')
+                obj_start--;
+            result_start = obj_start;
+            p += 15;
+        }
+        if (result_start) {
+            root = cJSON_Parse(result_start);
+        }
+        if (!root) return RELAY_ERR_PARSE;
     }
 
     /* Extract session_id */
