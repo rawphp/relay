@@ -2256,10 +2256,10 @@ static void poll_agent_bus(event_loop_t *loop)
         snprintf(full_bus_prompt, sizeof(full_bus_prompt), "%s", prompt);
     }
 
-    /* Use a per-agent-pair session key so context is maintained */
-    char session_key[128];
-    snprintf(session_key, sizeof(session_key), "agent-bus:%s", msg.from);
-    const char *session_id = session_get(loop->deps.sessions, session_key);
+    /* Agent bus messages use fresh sessions (no --resume) to avoid
+     * stale session failures that produce empty results. Each bus
+     * exchange is self-contained — context comes from the prompt. */
+    const char *session_id = NULL;
 
     /* Resolve workspace so LLM has a valid working directory */
     resolved_workspace_t bus_ws;
@@ -2274,8 +2274,8 @@ static void poll_agent_bus(event_loop_t *loop)
 
     if (rc != RELAY_OK || resp.is_error || resp.result[0] == '\0') {
         log_write(loop->deps.log, LOG_WARN,
-                  "Agent bus: LLM error (rc=%d is_error=%d) — queuing for retry",
-                  rc, resp.is_error);
+                  "Agent bus: LLM error (rc=%d is_error=%d result_len=%zu ws=%s) — queuing for retry",
+                  rc, resp.is_error, strlen(resp.result), bus_ws.path);
         agent_bus_log(loop->agent_bus_log_dir, "err", &msg, "LLM error");
         pending_bus_save(pending_dir, &msg);
         return;
@@ -2286,11 +2286,8 @@ static void poll_agent_bus(event_loop_t *loop)
         pending_bus_clear(pending_dir);
     }
 
-    /* Update session context */
-    if (resp.session_id[0] != '\0') {
-        session_set(loop->deps.sessions, session_key, resp.session_id);
-    }
-    track_response_tokens(loop, session_key, full_bus_prompt, resp.result);
+    /* Track tokens (no session persistence for bus — fresh each time) */
+    track_response_tokens(loop, "agent-bus", full_bus_prompt, resp.result);
 
     /* Log the outbound response */
     agent_bus_log(loop->agent_bus_log_dir, "out", &msg, resp.result);
