@@ -58,31 +58,34 @@ static void handle_sessions_list(session_store_t *sessions,
 
     const char *active = session_get_active_workspace(sessions, chat_id);
 
-    char buf[1024];
+    char buf[4096];
+    size_t off = 0;
+    size_t cap = sizeof(buf);
+
     if (active && active[0] != '\0') {
-        snprintf(buf, sizeof(buf), "Active: %s\nWorkspaces:\n", active);
+        off += (size_t)snprintf(buf + off, cap - off,
+                                "Active: %s\nWorkspaces:\n", active);
     } else {
-        snprintf(buf, sizeof(buf), "Active: none\nWorkspaces:\n");
+        off += (size_t)snprintf(buf + off, cap - off,
+                                "Active: none\nWorkspaces:\n");
     }
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count && off < cap; i++) {
         const workspace_def_t *ws = config_get_workspace_by_index(cfg, i);
         if (!ws) continue;
 
-        char line[RELAY_MAX_PATH + 128];
         int is_active = (active && active[0] != '\0' &&
                          strcmp(active, ws->name) == 0);
-        snprintf(line, sizeof(line),
+        off += (size_t)snprintf(buf + off, cap - off,
                  "%s %s \342\200\224 %s (%s)\n",
                  is_active ? "*" : " ",
                  ws->name,
                  ws->path,
                  ws->provider[0] ? ws->provider : "default");
-        strncat(buf, line, sizeof(buf) - strlen(buf) - 1);
     }
 
     /* Append global workspace_path fallback if set and not already listed */
     const char *fallback_path = config_get(cfg, "workspace_path", NULL);
-    if (fallback_path && fallback_path[0] != '\0') {
+    if (fallback_path && fallback_path[0] != '\0' && off < cap) {
         int already_listed = 0;
         for (int i = 0; i < count; i++) {
             const workspace_def_t *ws = config_get_workspace_by_index(cfg, i);
@@ -93,17 +96,15 @@ static void handle_sessions_list(session_store_t *sessions,
         }
         if (!already_listed) {
             int is_active = (!active || active[0] == '\0');
-            char line[RELAY_MAX_PATH + 128];
-            snprintf(line, sizeof(line),
+            off += (size_t)snprintf(buf + off, cap - off,
                      "%s (default) \342\200\224 %s\n",
                      is_active ? "*" : " ",
                      fallback_path);
-            strncat(buf, line, sizeof(buf) - strlen(buf) - 1);
         }
     }
 
-    strncat(buf, "\nUse /space <name> to switch.",
-            sizeof(buf) - strlen(buf) - 1);
+    if (off < cap)
+        snprintf(buf + off, cap - off, "\nUse /space <name> to switch.");
     snprintf(reply, reply_size, "%s", buf);
 }
 
