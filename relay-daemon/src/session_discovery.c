@@ -10,7 +10,7 @@
 #define MAX_SCAN_LINES 80
 
 /* Cache format version — bump when extraction logic changes */
-#define CACHE_VERSION 2
+#define CACHE_VERSION 3
 
 /* ── System content detection ──────────────────────────────────────── */
 
@@ -110,6 +110,16 @@ static int extract_text_from_content(cJSON *cont, char *summary,
     if (cJSON_IsString(cont)) {
         const char *text = cont->valuestring;
 
+        /* Skip leading whitespace for prefix checks */
+        const char *trimmed = text;
+        while (*trimmed == ' ' || *trimmed == '\t' || *trimmed == '\n')
+            trimmed++;
+
+        /* If the entire message is identity injection, reject it wholesale.
+         * Don't try line-by-line — everything after this prefix is identity
+         * file content (SOUL.md, IDENTITY.md, USER.md, PRIORITIES.md). */
+        if (strncmp(trimmed, "[Identity context", 17) == 0) return 0;
+
         /* Try command-args extraction first */
         const char *args_text = extract_from_command_args(text);
         if (args_text) {
@@ -138,6 +148,10 @@ static int extract_text_from_content(cJSON *cont, char *summary,
                 strcmp(item_type->valuestring, "text") == 0 &&
                 cJSON_IsString(item_text)) {
                 const char *text = item_text->valuestring;
+                /* Skip identity injection blocks entirely */
+                const char *t = text;
+                while (*t == ' ' || *t == '\t' || *t == '\n') t++;
+                if (strncmp(t, "[Identity context", 17) == 0) continue;
                 const char *clean = find_usable_line(text);
                 if (clean) {
                     copy_summary(clean, summary, summary_max);

@@ -153,15 +153,17 @@ static void test_discovery_strips_system_prefix(void)
 {
     mock_fs_reset();
 
-    /* First user message starts with system-injected identity context
-     * followed by markdown headings (also system) then actual user text */
+    /* First user message is identity injection (rejected wholesale).
+     * Second user message has actual user text. */
     mock_fs_set(PROJ_DIR "/sys-001.jsonl",
         "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
         "\"[Identity context \\u2014 pre-injected]\\n"
         "\\n"
         "## SOUL.md\\n"
         "# SOUL heading\\n"
-        "The actual user message is here\"}}\n");
+        "*You're not a chatbot.*\"}}\n"
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
+        "\"The actual user message is here\"}}\n");
 
     relay_cc_session_t results[10];
     int count = 0;
@@ -169,7 +171,7 @@ static void test_discovery_strips_system_prefix(void)
                            "/home/tom", results, 10, &count);
 
     TEST_ASSERT_EQUAL_INT(1, count);
-    /* Should skip the identity prefix and headings, find actual user text */
+    /* Should skip the identity message and find the real user text */
     TEST_ASSERT_NOT_NULL(strstr(results[0].summary, "actual user message"));
 }
 
@@ -200,7 +202,7 @@ static void test_discovery_cache_hit(void)
 
     /* Set up a cache file with a pre-existing summary and correct version */
     mock_fs_set("/home/tom/.relay-session-cache.json",
-        "{\"_version\":2,\"cached-001\":\"Cached summary from previous scan\"}");
+        "{\"_version\":3,\"cached-001\":\"Cached summary from previous scan\"}");
 
     /* .jsonl file exists but its content shouldn't be read if cache hit */
     mock_fs_set(PROJ_DIR "/cached-001.jsonl",
