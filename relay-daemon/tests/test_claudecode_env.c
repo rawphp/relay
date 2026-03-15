@@ -45,7 +45,7 @@ static void test_child_does_not_inherit_unset_claudecode(void)
         /* Write 1 if still set, 0 if gone */
         const char *val = getenv("CLAUDECODE");
         char result = (val != NULL) ? '1' : '0';
-        (void)write(pipefd[1], &result, 1);
+        ssize_t wr __attribute__((unused)) = write(pipefd[1], &result, 1);
         close(pipefd[1]);
         _exit(0);
     }
@@ -53,7 +53,7 @@ static void test_child_does_not_inherit_unset_claudecode(void)
     /* Parent */
     close(pipefd[1]);
     char result = '?';
-    (void)read(pipefd[0], &result, 1);
+    ssize_t rd __attribute__((unused)) = read(pipefd[0], &result, 1);
     close(pipefd[0]);
 
     int status;
