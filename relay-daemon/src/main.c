@@ -496,25 +496,6 @@ static void process_stream_object(cJSON *obj,
                 }
             }
         }
-    } else if (strcmp(type->valuestring, "assistant") == 0) {
-        /* Extract text from assistant message content array */
-        cJSON *message = cJSON_GetObjectItem(obj, "message");
-        if (message) {
-            cJSON *content = cJSON_GetObjectItem(message, "content");
-            if (cJSON_IsArray(content)) {
-                cJSON *item = NULL;
-                cJSON_ArrayForEach(item, content) {
-                    cJSON *ctype = cJSON_GetObjectItem(item, "type");
-                    cJSON *text = cJSON_GetObjectItem(item, "text");
-                    if (cJSON_IsString(ctype) &&
-                        strcmp(ctype->valuestring, "text") == 0 &&
-                        cJSON_IsString(text)) {
-                        on_token(text->valuestring, strlen(text->valuestring),
-                                 userdata);
-                    }
-                }
-            }
-        }
     } else if (strcmp(type->valuestring, "result") == 0) {
         char *printed = cJSON_PrintUnformatted(obj);
         if (printed) {
