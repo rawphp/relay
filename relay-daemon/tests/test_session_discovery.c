@@ -128,6 +128,94 @@ static void test_discovery_summary_truncated(void)
     TEST_ASSERT_TRUE(strlen(results[0].summary) <= 80);
 }
 
+/* ── REQ-141: array content + system prefix stripping + cache ──────── */
+
+static void test_discovery_array_content_format(void)
+{
+    mock_fs_reset();
+
+    /* VS Code IDE format: content is an array of {type, text} objects */
+    mock_fs_set(PROJ_DIR "/ide-001.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+        "{\"type\":\"text\",\"text\":\"Fix the button color\"}"
+        "]}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("Fix the button color", results[0].summary);
+}
+
+static void test_discovery_strips_system_prefix(void)
+{
+    mock_fs_reset();
+
+    /* First user message starts with system-injected identity context
+     * followed by markdown headings (also system) then actual user text */
+    mock_fs_set(PROJ_DIR "/sys-001.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
+        "\"[Identity context \\u2014 pre-injected]\\n"
+        "\\n"
+        "## SOUL.md\\n"
+        "# SOUL heading\\n"
+        "The actual user message is here\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    /* Should skip the identity prefix and headings, find actual user text */
+    TEST_ASSERT_NOT_NULL(strstr(results[0].summary, "actual user message"));
+}
+
+static void test_discovery_strips_command_tags(void)
+{
+    mock_fs_reset();
+
+    /* Content starts with <command-message> tags */
+    mock_fs_set(PROJ_DIR "/cmd-001.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":"
+        "\"<command-message>do-work</command-message>\\n"
+        "<command-name>/do-work</command-name>\\n"
+        "<command-args>start\\nBuild a login form</command-args>\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    /* Should extract "Build a login form" from command-args, not the tags */
+    TEST_ASSERT_NOT_NULL(strstr(results[0].summary, "Build a login form"));
+}
+
+static void test_discovery_cache_hit(void)
+{
+    mock_fs_reset();
+
+    /* Set up a cache file with a pre-existing summary */
+    mock_fs_set("/home/tom/.relay-session-cache.json",
+        "{\"cached-001\":\"Cached summary from previous scan\"}");
+
+    /* .jsonl file exists but its content shouldn't be read if cache hit */
+    mock_fs_set(PROJ_DIR "/cached-001.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Wrong text\"}}\n");
+
+    relay_cc_session_t results[10];
+    int count = 0;
+    session_discovery_scan(&g_mock_fs, "/Users/tom/project",
+                           "/home/tom", results, 10, &count);
+
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("Cached summary from previous scan",
+                             results[0].summary);
+}
+
 /* ── Suite ──────────────────────────────────────────────────────────── */
 
 void test_session_discovery_suite(void)
@@ -138,4 +226,9 @@ void test_session_discovery_suite(void)
     RUN_TEST(test_discovery_malformed_json_skipped);
     RUN_TEST(test_discovery_no_user_message);
     RUN_TEST(test_discovery_summary_truncated);
+    /* REQ-141 */
+    RUN_TEST(test_discovery_array_content_format);
+    RUN_TEST(test_discovery_strips_system_prefix);
+    RUN_TEST(test_discovery_strips_command_tags);
+    RUN_TEST(test_discovery_cache_hit);
 }
