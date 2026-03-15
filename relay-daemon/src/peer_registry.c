@@ -1,10 +1,13 @@
 #include "peer_registry.h"
 #include "relay.h"
 
-#include <ctype.h>
+#include <cJSON/cJSON.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -17,78 +20,103 @@ static int          g_peer_count = 0;
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
 
-/* Trim trailing whitespace (newline, carriage return, spaces) in place */
-static void trim_trailing(char *s)
+/* Check if a PID is alive via kill(pid, 0) */
+static int pid_is_alive(pid_t pid)
 {
-    size_t len = strlen(s);
-    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r' ||
-                       s[len - 1] == ' '  || s[len - 1] == '\t')) {
-        s[--len] = '\0';
-    }
+    if (pid <= 0) return 0;
+    return (kill(pid, 0) == 0) ? 1 : 0;
 }
 
-/* Skip leading whitespace, return pointer into same buffer */
-static const char *skip_leading(const char *s)
+/* Read a file into a malloc'd buffer. Caller must free. */
+static char *read_file_contents(const char *path)
 {
-    while (*s == ' ' || *s == '\t') s++;
-    return s;
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (len <= 0 || len > 8192) { fclose(f); return NULL; }
+
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return NULL; }
+
+    size_t n = fread(buf, 1, (size_t)len, f);
+    fclose(f);
+    buf[n] = '\0';
+    return buf;
 }
 
 /* ── Public API ────────────────────────────────────────────────────────── */
 
-int peer_registry_init(const char *registry_path, const char *self_name)
+int peer_registry_init(const char *ad_dir, const char *self_name)
 {
     g_peer_count = 0;
     memset(g_peers, 0, sizeof(g_peers));
 
-    if (!registry_path) return RELAY_OK;
+    if (!ad_dir) return RELAY_OK;
 
-    FILE *f = fopen(registry_path, "r");
-    if (!f) return RELAY_OK; /* missing file = 0 peers, not an error */
+    DIR *d = opendir(ad_dir);
+    if (!d) return RELAY_OK; /* missing dir = 0 peers */
 
-    char line[1024];
-    while (fgets(line, sizeof(line), f)) {
-        trim_trailing(line);
-        const char *trimmed = skip_leading(line);
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && g_peer_count < PEER_REGISTRY_MAX) {
+        /* Only process .json files */
+        size_t nlen = strlen(ent->d_name);
+        if (nlen < 6 || strcmp(ent->d_name + nlen - 5, ".json") != 0) continue;
 
-        /* Skip blank lines and comments */
-        if (trimmed[0] == '\0' || trimmed[0] == '#') continue;
+        /* Read the file */
+        char path[RELAY_MAX_PATH];
+        snprintf(path, sizeof(path), "%s/%s", ad_dir, ent->d_name);
 
-        /* Find the '=' separator */
-        const char *eq = strchr(trimmed, '=');
-        if (!eq) continue; /* malformed */
+        char *content = read_file_contents(path);
+        if (!content) continue;
 
-        /* Extract name (before '=') */
-        size_t name_len = (size_t)(eq - trimmed);
-        if (name_len == 0 || name_len >= 64) continue; /* malformed */
+        /* Parse JSON */
+        cJSON *root = cJSON_Parse(content);
+        free(content);
+        if (!root) continue;
 
-        /* Extract path (after '=') */
-        const char *path = eq + 1;
-        if (path[0] == '\0') continue; /* no path */
+        cJSON *j_name   = cJSON_GetObjectItem(root, "name");
+        cJSON *j_pid    = cJSON_GetObjectItem(root, "pid");
+        cJSON *j_socket = cJSON_GetObjectItem(root, "socket");
 
-        /* Build name string */
-        char name[64];
-        memcpy(name, trimmed, name_len);
-        name[name_len] = '\0';
+        if (!cJSON_IsString(j_name) || !cJSON_IsNumber(j_pid) ||
+            !cJSON_IsString(j_socket)) {
+            cJSON_Delete(root);
+            continue;
+        }
+
+        const char *name = j_name->valuestring;
+        pid_t pid = (pid_t)j_pid->valuedouble;
+        const char *sock = j_socket->valuestring;
 
         /* Skip self */
-        if (self_name && strcmp(name, self_name) == 0) continue;
+        if (self_name && strcmp(name, self_name) == 0) {
+            cJSON_Delete(root);
+            continue;
+        }
 
-        /* Check capacity */
-        if (g_peer_count >= PEER_REGISTRY_MAX) break;
+        /* Check PID liveness — clean up stale entries */
+        if (!pid_is_alive(pid)) {
+            unlink(path);
+            cJSON_Delete(root);
+            continue;
+        }
 
         /* Store entry */
         peer_entry_t *p = &g_peers[g_peer_count];
         snprintf(p->name, sizeof(p->name), "%s", name);
-        snprintf(p->home_path, sizeof(p->home_path), "%s", path);
-        snprintf(p->socket_path, sizeof(p->socket_path),
-                 "%s/data/relay.sock", path);
-        p->is_alive = 0;
+        snprintf(p->socket_path, sizeof(p->socket_path), "%s", sock);
+        p->pid = pid;
+        p->is_alive = 1; /* PID is alive, assume bus is too */
 
         g_peer_count++;
+        cJSON_Delete(root);
     }
 
-    fclose(f);
+    closedir(d);
     return RELAY_OK;
 }
 
@@ -108,12 +136,20 @@ int peer_registry_probe(int index)
     if (index < 0 || index >= g_peer_count) return 0;
 
     peer_entry_t *p = &g_peers[index];
-    p->is_alive = 0;
 
+    /* Primary: PID check (instant, no I/O) */
+    if (!pid_is_alive(p->pid)) {
+        p->is_alive = 0;
+        return 0;
+    }
+
+    /* Secondary: socket connect (confirms bus is actually listening) */
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return 0;
+    if (fd < 0) {
+        p->is_alive = 1; /* PID alive, can't check socket — assume up */
+        return 1;
+    }
 
-    /* Non-blocking connect with short timeout */
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags >= 0) {
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -126,20 +162,23 @@ int peer_registry_probe(int index)
 
     int rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
     if (rc == 0) {
-        /* Connected immediately */
         p->is_alive = 1;
     } else if (errno == EINPROGRESS) {
-        /* Wait briefly for connection to complete */
         fd_set wfds;
         FD_ZERO(&wfds);
         FD_SET(fd, &wfds);
-        struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 }; /* 500ms */
+        struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 };
         if (select(fd + 1, NULL, &wfds, NULL, &tv) > 0) {
             int so_err = 0;
             socklen_t len = sizeof(so_err);
             getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_err, &len);
-            if (so_err == 0) p->is_alive = 1;
+            p->is_alive = (so_err == 0) ? 1 : 0;
+        } else {
+            p->is_alive = 0;
         }
+    } else {
+        /* PID alive but socket not reachable — bus might be disabled */
+        p->is_alive = 0;
     }
 
     close(fd);
