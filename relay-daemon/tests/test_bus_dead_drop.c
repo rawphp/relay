@@ -24,7 +24,7 @@ static void cleanup_addir(void)
 {
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "rm -rf %s", g_addir);
-    system(cmd);
+    (void)system(cmd);
 }
 
 static agent_bus_message_t make_msg(const char *from, const char *text)

@@ -42,7 +42,7 @@ static void cleanup(void)
     peer_registry_destroy();
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "rm -rf %s", g_addir);
-    system(cmd);
+    (void)system(cmd);
 }
 
 /* ── Tests ────────────────────────────────────────────────────────────────── */
