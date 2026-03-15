@@ -227,6 +227,74 @@ npm run docs:build    # production build to docs/.vitepress/dist/
 npm run docs:preview  # preview the production build
 ```
 
+## Agent Bus Modules
+
+The agent bus system spans several modules. Here's the developer-facing guide:
+
+### Source Files
+
+| File | Test File | Purpose |
+|------|-----------|---------|
+| `agent_bus.c` | `test_agent_bus.c` | Socket protocol (init, accept, send, log) |
+| `agent_bus_rate.c` | (in test_agent_bus.c) | Connection rate limiter |
+| `agent_advertise.c` | `test_agent_advertise.c` | Write/remove `~/.relay.d/{name}.json` |
+| `peer_registry.c` | `test_peer_registry.c` | Scan ads, PID liveness, LLM context block |
+| `bus_directive.c` | `test_bus_directive.c` | Parse `[AGENT_BUS_SEND]` from LLM output |
+| `bus_dead_drop.c` | `test_bus_dead_drop.c` | Offline message persistence |
+
+### Testing Patterns
+
+**Advertisement tests** — write JSON files to a temp directory, scan with `peer_registry_init`:
+
+```c
+static void write_ad(const char *name, const char *socket, int pid) {
+    // Write {ad_dir}/{name}.json with cJSON
+}
+// Use getpid() for PID so liveness check passes in tests
+write_ad("ash", "/tmp/ash.sock", (int)getpid());
+peer_registry_init(ad_dir, "kai");  // excludes "kai", finds "ash"
+```
+
+**Dead drop tests** — save/load/clear with temp directories:
+
+```c
+agent_bus_message_t msg = make_msg("kai", "Hello Ash");
+bus_dead_drop_save(ad_dir, "ash", &msg);
+int count = bus_dead_drop_load(ad_dir, "ash", out, sizeof(out));
+// count == 1, out contains formatted catch-up block
+```
+
+**Bus directive tests** — set up peer registry, then call `bus_directive_process`:
+
+```c
+peer_registry_init(ad_dir, "kai");
+int count = bus_directive_process(
+    "[AGENT_BUS_SEND to=ash] Hello!", out, sizeof(out), "kai", NULL);
+// count == 1, out has directive stripped, status note appended
+```
+
+### CLAUDE.md Agent Bus Section
+
+Each deployed agent's `CLAUDE.md` includes an "Agent Bus" section that tells the LLM:
+- It's connected to the agent bus
+- How to use `[AGENT_BUS_SEND to=<name>]` directives
+- That the daemon strips directives and routes messages
+- That the bus is live-only (no persistent mailbox for the LLM — the dead drop is daemon-level)
+
+This is set via `templates/CLAUDE.md.template`. The daemon also injects a "Peer Agents on the Bus" block into the `--system-prompt` listing online/offline peers.
+
+### Bus Prompt Design
+
+When the daemon processes an inbound bus message, the LLM prompt says:
+
+```
+[Agent bus message from Ash]: Hey Kai, how are you?
+
+Reply directly. Do NOT use [AGENT_BUS_SEND] — the daemon routes your reply automatically.
+```
+
+The "Do NOT use AGENT_BUS_SEND" instruction prevents the LLM from wrapping its reply in another directive, which would create a recursion loop. The daemon handles reply routing via `agent_bus_send(msg.from_socket, ...)`.
+
 ## Adding a New Message Platform
 
 1. Create `relay-daemon/src/newplatform.c`
