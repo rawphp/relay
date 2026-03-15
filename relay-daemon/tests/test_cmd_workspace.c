@@ -311,6 +311,137 @@ static void test_cmd_session_no_arg_shows_active_name(void)
     config_free(cfg);
 }
 
+/* ── /space and /spaces tests (REQ-133) ────────────────────────────── */
+
+static void test_cmd_space_switch_known(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[256] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space ea", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
+    const char *active = session_get_active_workspace(s, "user1");
+    TEST_ASSERT_EQUAL_STRING("ea", active);
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_space_switch_unknown(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[256] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space missing", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "missing"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_spaces_lists_workspaces(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[512] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "code"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_space_no_arg_lists_workspaces(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[512] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "code"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_space_quoted_arg(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[256] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space \"ea\"", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    const char *active = session_get_active_workspace(s, "user1");
+    TEST_ASSERT_EQUAL_STRING("ea", active);
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_session_alias_still_works(void)
+{
+    /* /session should still work as an alias for /space */
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[256] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/session ea", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    const char *active = session_get_active_workspace(s, "user1");
+    TEST_ASSERT_EQUAL_STRING("ea", active);
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_sessions_alias_still_works(void)
+{
+    /* /sessions should still work as an alias for /spaces */
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[512] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/sessions", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_cmd_space_help_text_references_space(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_config_two_workspaces();
+    char reply[256] = {0};
+
+    /* /space with no valid arg should show help referencing /space */
+    cmd_workspace_handle(s, cfg, "user1", "/space", reply, sizeof(reply));
+
+    /* Help text should mention /space, not /session */
+    TEST_ASSERT_NOT_NULL(strstr(reply, "/space"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
 /* ── Suite ──────────────────────────────────────────────────────────── */
 
 void test_cmd_workspace_suite(void)
@@ -330,4 +461,13 @@ void test_cmd_workspace_suite(void)
     RUN_TEST(test_cmd_sessions_no_duplicate_when_path_matches_named);
     RUN_TEST(test_cmd_session_no_arg_shows_active_none);
     RUN_TEST(test_cmd_session_no_arg_shows_active_name);
+    /* REQ-133: /space and /spaces */
+    RUN_TEST(test_cmd_space_switch_known);
+    RUN_TEST(test_cmd_space_switch_unknown);
+    RUN_TEST(test_cmd_spaces_lists_workspaces);
+    RUN_TEST(test_cmd_space_no_arg_lists_workspaces);
+    RUN_TEST(test_cmd_space_quoted_arg);
+    RUN_TEST(test_cmd_session_alias_still_works);
+    RUN_TEST(test_cmd_sessions_alias_still_works);
+    RUN_TEST(test_cmd_space_help_text_references_space);
 }

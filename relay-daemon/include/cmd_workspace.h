@@ -8,8 +8,10 @@
  * Handle a workspace-related Telegram command.
  *
  * Inspects `text` for:
- *   /session <name>  — switch active workspace
- *   /sessions        — list all configured workspaces
+ *   /space <name>    — switch active workspace (primary)
+ *   /spaces          — list all configured workspaces (primary)
+ *   /session <name>  — alias for /space
+ *   /sessions        — alias for /spaces
  *   /workspace       — show current workspace info
  *   /close           — close current workspace session
  *   /clear           — alias for /close

@@ -14,8 +14,8 @@ static void handle_session_switch(session_store_t *sessions,
 {
     if (!arg || arg[0] == '\0') {
         snprintf(reply, reply_size,
-                 "Usage: /session <name>\n"
-                 "Use /sessions to list available workspaces.");
+                 "Usage: /space <name>\n"
+                 "Use /spaces to list available workspaces.");
         return;
     }
 
@@ -101,6 +101,8 @@ static void handle_sessions_list(session_store_t *sessions,
         }
     }
 
+    strncat(buf, "\nUse /space <name> to switch.",
+            sizeof(buf) - strlen(buf) - 1);
     snprintf(reply, reply_size, "%s", buf);
 }
 
@@ -113,7 +115,7 @@ static void handle_workspace_info(session_store_t *sessions,
     const char *active = session_get_active_workspace(sessions, chat_id);
     if (!active || active[0] == '\0') {
         snprintf(reply, reply_size,
-                 "No active workspace. Use /session <name> to switch.");
+                 "No active workspace. Use /space <name> to switch.");
         return;
     }
 
@@ -161,15 +163,21 @@ int cmd_workspace_handle(session_store_t *sessions,
         return 0;
     }
 
-    /* /session <name> */
+    /* /space <name> (primary) and /session <name> (alias) */
+    if (strncmp(text, "/space ", 7) == 0) {
+        handle_session_switch(sessions, cfg, chat_id,
+                              text + 7, reply, reply_size);
+        return 1;
+    }
     if (strncmp(text, "/session ", 9) == 0) {
         handle_session_switch(sessions, cfg, chat_id,
                               text + 9, reply, reply_size);
         return 1;
     }
 
-    /* /sessions and /session (no argument) */
-    if (strcmp(text, "/sessions") == 0 || strcmp(text, "/session") == 0) {
+    /* /spaces (primary) and /sessions, /space, /session (aliases) */
+    if (strcmp(text, "/spaces") == 0 || strcmp(text, "/space") == 0 ||
+        strcmp(text, "/sessions") == 0 || strcmp(text, "/session") == 0) {
         handle_sessions_list(sessions, cfg, chat_id, reply, reply_size);
         return 1;
     }
