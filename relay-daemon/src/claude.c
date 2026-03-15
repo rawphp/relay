@@ -245,15 +245,23 @@ int claude_parse_response(const char *json, claude_response_t *resp)
     cJSON *dur = cJSON_GetObjectItem(root, "duration_ms");
     resp->duration_ms = cJSON_IsNumber(dur) ? (int)dur->valuedouble : 0;
 
-    /* Check if error type — handle both non-streaming ("type":"error")
-     * and streaming ("type":"result","subtype":"error") formats */
+    /* Check if error — multiple possible indicators:
+     * 1. "type":"error"
+     * 2. "subtype" contains "error" (e.g. "error", "error_during_execution")
+     * 3. "is_error":true (explicit boolean field) */
     cJSON *type = cJSON_GetObjectItem(root, "type");
     resp->is_error = (cJSON_IsString(type) &&
                       strcmp(type->valuestring, "error") == 0) ? 1 : 0;
     if (!resp->is_error) {
         cJSON *subtype = cJSON_GetObjectItem(root, "subtype");
         if (cJSON_IsString(subtype) &&
-            strcmp(subtype->valuestring, "error") == 0) {
+            strstr(subtype->valuestring, "error") != NULL) {
+            resp->is_error = 1;
+        }
+    }
+    if (!resp->is_error) {
+        cJSON *is_err = cJSON_GetObjectItem(root, "is_error");
+        if (cJSON_IsBool(is_err) && cJSON_IsTrue(is_err)) {
             resp->is_error = 1;
         }
     }
