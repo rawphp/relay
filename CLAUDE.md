@@ -125,6 +125,27 @@ if (resp.session_id[0]) session_set(loop->deps.sessions, session_key, resp.sessi
 
 **Agent bus** (`agent_bus.c`): Unix domain socket for inter-agent messaging. `agent_bus_accept_message` returns `RELAY_ERR_NOTFOUND` (not `RELAY_ERR`) when no message is available (EAGAIN).
 
+**Command handlers**: Telegram commands are dispatched in `event_loop.c` to dedicated handlers:
+- `cmd_workspace.c` — `/space`, `/spaces`, `/workspace`, `/close`, `/clear`
+- `cmd_sessions.c` — `/sessions`, `/session <N>`
+
+**Workspace resolver** (`workspace_resolver.c`): Resolves the active workspace with a fallback chain: active workspace → first `[workspace]` block → global `workspace_path` → install directory.
+
+**Session discovery** (`session_discovery.c`): Scans `~/.claude/projects/` for `.jsonl` session files, extracts summaries (first user message), caches results in `~/.relay-session-cache.json`. Provider-gated — only Claude Code supports session browsing.
+
+**Path encoding** (`path_util.c`): Converts filesystem paths to/from Claude's `.claude/projects/` directory naming scheme (e.g., `/Users/tom/project` → `-Users-tom-project`). Also resolves the relay install directory from config path.
+
+**Workspace configuration** in `relay.conf` uses `[workspace]` blocks:
+```ini
+[workspace "myproject"]
+path = ~/projects/myproject
+provider = claude
+
+[workspace "other"]
+path = ~/projects/other
+provider = openai_codex
+```
+
 ### Runtime vs Source
 
 - **Source repo**: `~/Code/relay-release/` (this repo)
@@ -138,12 +159,13 @@ if (resp.session_id[0]) session_set(loop->deps.sessions, session_key, resp.sessi
 | File | Purpose |
 |------|---------|
 | `~/relay/config/relay.conf` | Main config — contains secrets (chmod 600) |
-| `~/relay/data/sessions.json` | Active Claude Code session tracking |
+| `~/relay/data/sessions.json` | Session tracking + active workspace per chat |
 | `~/relay/data/transcripts/*.jsonl` | Full message history |
 | `~/relay/IDENTITY.md`, `USER.md`, `SOUL.md`, `PRIORITIES.md` | Agent identity files |
 
 ### Adding New Components
 
+- **New Telegram command**: Add handler in `src/cmd_*.c`, dispatch in `event_loop.c`, register in `telegram.c` commands array
 - **New message platform**: Add `src/newplatform.c`, integrate in `event_loop.c`
 - **New LLM provider**: Add `src/newprovider.c`, register in `llm_provider.c`
 - **New C source file**: Just create it in `src/` — Makefile auto-discovers it
