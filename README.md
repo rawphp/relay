@@ -52,14 +52,18 @@ Send a message. The daemon routes it to Claude Code in your active workspace, st
 
 | Command | Description |
 |---------|-------------|
-| `/session <name>` | Switch to a named workspace |
-| `/sessions` | List all configured workspaces |
-| `/workspace` | Show current workspace, path, and provider |
-| `/clear` | Start a fresh conversation |
-| `/status` | Daemon health and memory sidecar status |
-| `/reload` | Reload config without restarting |
+| `/start` | Get started |
+| `/help` | Show available commands |
+| `/status` | Show daemon and memory status |
 | `/restart` | Restart the daemon |
-| `/help` | Show all commands |
+| `/clear` | Start a new conversation |
+| `/close` | Close the active space |
+| `/space <name>` | Switch space |
+| `/spaces` | List all spaces |
+| `/session <number>` | Select session from listing |
+| `/sessions` | Browse resumable sessions |
+| `/workspace` | Show current workspace info |
+| `/reload` | Reload config without restart |
 
 ---
 
