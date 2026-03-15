@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Relay',
   description: 'A persistent AI familiar daemon — bridges Telegram and Claude Code',
+  base: '/relay/',
 
   themeConfig: {
     nav: [
