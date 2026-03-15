@@ -44,7 +44,7 @@ int cmd_sessions_handle(relay_fs_t *fs,
 
     /* Resolve the active workspace */
     resolved_workspace_t ws;
-    workspace_resolve(sessions, cfg, chat_id, &ws);
+    workspace_resolve(sessions, cfg, chat_id, NULL, &ws);
 
     if (ws.is_error) {
         snprintf(reply, reply_size,

@@ -28,7 +28,7 @@ static void test_resolve_active_workspace(void)
     session_set_active_workspace(s, "user1", "ea");
 
     resolved_workspace_t ws;
-    workspace_resolve(s, cfg, "user1", &ws);
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
 
     TEST_ASSERT_EQUAL_INT(0, ws.is_error);
     TEST_ASSERT_EQUAL_INT(0, ws.is_fallback);
@@ -53,7 +53,7 @@ static void test_resolve_default_first_workspace(void)
 
     /* No active workspace set */
     resolved_workspace_t ws;
-    workspace_resolve(s, cfg, "user1", &ws);
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
 
     TEST_ASSERT_EQUAL_INT(0, ws.is_error);
     TEST_ASSERT_EQUAL_INT(1, ws.is_fallback);
@@ -75,7 +75,7 @@ static void test_resolve_global_fallback(void)
         "provider = claude\n");
 
     resolved_workspace_t ws;
-    workspace_resolve(s, cfg, "user1", &ws);
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
 
     TEST_ASSERT_EQUAL_INT(0, ws.is_error);
     TEST_ASSERT_EQUAL_INT(1, ws.is_fallback);
@@ -91,7 +91,7 @@ static void test_resolve_error_no_workspace(void)
     config_t *cfg = config_load_string("provider = claude\n");
 
     resolved_workspace_t ws;
-    workspace_resolve(s, cfg, "user1", &ws);
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
 
     TEST_ASSERT_EQUAL_INT(1, ws.is_error);
 
@@ -111,11 +111,47 @@ static void test_resolve_stale_active_falls_to_first(void)
     session_set_active_workspace(s, "user1", "deleted");
 
     resolved_workspace_t ws;
-    workspace_resolve(s, cfg, "user1", &ws);
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
 
     TEST_ASSERT_EQUAL_INT(0, ws.is_error);
     TEST_ASSERT_EQUAL_INT(1, ws.is_fallback);
     TEST_ASSERT_EQUAL_STRING("ea", ws.name);
+
+    session_free(s);
+    config_free(cfg);
+}
+
+/* ── REQ-140: install dir fallback ──────────────────────────────────── */
+
+static void test_resolve_install_dir_fallback(void)
+{
+    session_store_t *s = make_store();
+    /* No workspace blocks or workspace_path */
+    config_t *cfg = config_load_string("provider = claude\n");
+
+    resolved_workspace_t ws;
+    /* Pass config_path so install dir can be derived */
+    workspace_resolve(s, cfg, "user1", "/home/kai/config/relay.conf", &ws);
+
+    TEST_ASSERT_EQUAL_INT(0, ws.is_error);
+    TEST_ASSERT_EQUAL_INT(1, ws.is_fallback);
+    TEST_ASSERT_EQUAL_STRING("/home/kai", ws.path);
+    TEST_ASSERT_EQUAL_STRING("kai", ws.name);
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_resolve_no_install_dir_errors(void)
+{
+    session_store_t *s = make_store();
+    /* No workspace blocks, no workspace_path, no install_dir */
+    config_t *cfg = config_load_string("provider = claude\n");
+
+    resolved_workspace_t ws;
+    workspace_resolve(s, cfg, "user1", NULL, &ws);
+
+    TEST_ASSERT_EQUAL_INT(1, ws.is_error);
 
     session_free(s);
     config_free(cfg);
@@ -130,4 +166,7 @@ void test_workspace_resolver_suite(void)
     RUN_TEST(test_resolve_global_fallback);
     RUN_TEST(test_resolve_error_no_workspace);
     RUN_TEST(test_resolve_stale_active_falls_to_first);
+    /* REQ-140 */
+    RUN_TEST(test_resolve_install_dir_fallback);
+    RUN_TEST(test_resolve_no_install_dir_errors);
 }

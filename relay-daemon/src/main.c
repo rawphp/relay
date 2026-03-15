@@ -1224,14 +1224,12 @@ int main(int argc, char *argv[])
         const char *svc_url = config_get(mc, "memory_service_url",
                                          "http://localhost:8765");
 
-        /* Derive agent_home: config is at {agent_home}/config/relay.conf */
+        /* Derive agent_home via centralized install dir resolution */
         char agent_home[RELAY_MAX_PATH];
-        snprintf(agent_home, sizeof(agent_home), "%s", config_path);
-        {
-            char *p = strrchr(agent_home, '/');
-            if (p) *p = '\0';  /* strip filename */
-            p = strrchr(agent_home, '/');
-            if (p) *p = '\0';  /* strip config/ dir */
+        if (path_util_install_dir(config_path, agent_home,
+                                   sizeof(agent_home)) != RELAY_OK) {
+            fprintf(stderr, "Could not resolve install dir from config path\n");
+            return 1;
         }
 
         char ingest_url[RELAY_MAX_URL];

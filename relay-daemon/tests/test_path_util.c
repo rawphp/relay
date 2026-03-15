@@ -1,5 +1,6 @@
 #include "Unity/unity.h"
 #include "path_util.h"
+#include "relay.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -132,6 +133,38 @@ static void test_encode_decode_round_trip(void)
     TEST_ASSERT_EQUAL_STRING(original, decoded);
 }
 
+/* ── REQ-140: install dir resolution ──────────────────────────────────── */
+
+static void test_install_dir_normal(void)
+{
+    char out[256];
+    int rc = path_util_install_dir("/home/kai/config/relay.conf", out, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(RELAY_OK, rc);
+    TEST_ASSERT_EQUAL_STRING("/home/kai", out);
+}
+
+static void test_install_dir_deep_path(void)
+{
+    char out[256];
+    int rc = path_util_install_dir("/Users/tom/agents/kai/config/relay.conf", out, sizeof(out));
+    TEST_ASSERT_EQUAL_INT(RELAY_OK, rc);
+    TEST_ASSERT_EQUAL_STRING("/Users/tom/agents/kai", out);
+}
+
+static void test_install_dir_wrong_suffix(void)
+{
+    char out[256];
+    int rc = path_util_install_dir("/home/kai/other.conf", out, sizeof(out));
+    TEST_ASSERT_NOT_EQUAL(RELAY_OK, rc);
+}
+
+static void test_install_dir_null(void)
+{
+    char out[256];
+    int rc = path_util_install_dir(NULL, out, sizeof(out));
+    TEST_ASSERT_NOT_EQUAL(RELAY_OK, rc);
+}
+
 /* ── Suite ────────────────────────────────────────────────────────────── */
 
 void test_path_util_suite(void)
@@ -147,4 +180,9 @@ void test_path_util_suite(void)
     RUN_TEST(test_decode_claude_dir_root);
     RUN_TEST(test_decode_claude_dir_empty);
     RUN_TEST(test_encode_decode_round_trip);
+    /* REQ-140 */
+    RUN_TEST(test_install_dir_normal);
+    RUN_TEST(test_install_dir_deep_path);
+    RUN_TEST(test_install_dir_wrong_suffix);
+    RUN_TEST(test_install_dir_null);
 }

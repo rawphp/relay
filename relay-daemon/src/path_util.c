@@ -1,4 +1,5 @@
 #include "path_util.h"
+#include "relay.h"
 
 #include <libgen.h>
 #include <stdio.h>
@@ -43,6 +44,30 @@ void path_util_decode_claude_dir(const char *encoded, char *out, size_t max)
         out[j++] = (encoded[i] == '-') ? '/' : encoded[i];
     }
     out[j] = '\0';
+}
+
+int path_util_install_dir(const char *config_path, char *out, size_t max)
+{
+    if (!config_path || !out || max == 0) {
+        return RELAY_ERR;
+    }
+
+    static const char suffix[] = "/config/relay.conf";
+    size_t cp_len = strlen(config_path);
+    size_t sf_len = strlen(suffix);
+
+    if (cp_len < sf_len ||
+        strcmp(config_path + cp_len - sf_len, suffix) != 0) {
+        return RELAY_ERR;
+    }
+
+    size_t home_len = cp_len - sf_len;
+    if (home_len == 0) {
+        snprintf(out, max, "/");
+    } else {
+        snprintf(out, max, "%.*s", (int)home_len, config_path);
+    }
+    return RELAY_OK;
 }
 
 void resolve_default_config_path(const char *argv0, char *out, size_t max)

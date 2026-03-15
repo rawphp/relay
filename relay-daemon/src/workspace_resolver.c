@@ -1,4 +1,5 @@
 #include "workspace_resolver.h"
+#include "path_util.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,7 @@ static void fill_from_def(const workspace_def_t *def, resolved_workspace_t *out)
 void workspace_resolve(session_store_t      *sessions,
                        const config_t       *cfg,
                        const char           *chat_id,
+                       const char           *config_path,
                        resolved_workspace_t *out)
 {
     memset(out, 0, sizeof(*out));
@@ -72,6 +74,25 @@ void workspace_resolve(session_store_t      *sessions,
         return;
     }
 
-    /* 4. Nothing configured */
+    /* 4. Fall back to install directory (derived from config_path) */
+    if (config_path) {
+        char install_dir[RELAY_MAX_PATH];
+        if (path_util_install_dir(config_path, install_dir,
+                                   sizeof(install_dir)) == RELAY_OK) {
+            snprintf(out->path, sizeof(out->path), "%s", install_dir);
+            /* Use directory basename as workspace name */
+            const char *slash = strrchr(install_dir, '/');
+            const char *bname = slash ? slash + 1 : install_dir;
+            snprintf(out->name, sizeof(out->name), "%s",
+                     bname[0] ? bname : "home");
+            snprintf(out->provider, sizeof(out->provider), "%s",
+                     config_get(cfg, "provider", ""));
+            out->is_fallback = 1;
+            out->is_error    = 0;
+            return;
+        }
+    }
+
+    /* 5. Nothing configured */
     out->is_error = 1;
 }

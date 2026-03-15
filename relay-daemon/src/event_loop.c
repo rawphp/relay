@@ -729,7 +729,7 @@ static void *claude_worker_thread(void *arg)
     /* Resolve active workspace */
     resolved_workspace_t resolved_ws;
     workspace_resolve(loop->deps.sessions, loop->deps.cfg,
-                      work->chat_id, &resolved_ws);
+                      work->chat_id, loop->config_path, &resolved_ws);
     if (resolved_ws.is_error) {
         send_telegram(loop, work->chat_id,
                       "No workspace configured. "
@@ -1166,7 +1166,8 @@ static void handle_photo_message(event_loop_t *loop, telegram_message_t *msg)
 
     /* 7. Resolve workspace — photos are conversational, use $HOME fallback if not set */
     resolved_workspace_t resolved_ws;
-    workspace_resolve(loop->deps.sessions, loop->deps.cfg, msg->chat_id, &resolved_ws);
+    workspace_resolve(loop->deps.sessions, loop->deps.cfg, msg->chat_id,
+                      loop->config_path, &resolved_ws);
     char ws_fallback[RELAY_MAX_PATH];
     const char *photo_ws = el_photo_llm_workspace(&resolved_ws,
                                                    ws_fallback, sizeof(ws_fallback));

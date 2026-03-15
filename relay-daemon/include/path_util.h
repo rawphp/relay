@@ -30,4 +30,11 @@ void path_util_encode_claude_dir(const char *path, char *out, size_t max);
  * Replaces '-' with '/', e.g. "-Users-tom-project" → "/Users/tom/project". */
 void path_util_decode_claude_dir(const char *encoded, char *out, size_t max);
 
+/* Resolve the relay install directory from the config file path.
+ * Strips the trailing "/config/relay.conf" to get the install root.
+ * e.g., "/home/kai/config/relay.conf" → "/home/kai"
+ * Returns RELAY_OK on success, RELAY_ERR if config_path is NULL or
+ * does not end with "/config/relay.conf". */
+int path_util_install_dir(const char *config_path, char *out, size_t max);
+
 #endif /* RELAY_PATH_UTIL_H */
