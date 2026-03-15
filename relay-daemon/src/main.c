@@ -14,6 +14,7 @@
 #include "memory_sidecar.h"
 #include "memory_curator.h"
 #include "agent_bus.h"
+#include "agent_advertise.h"
 #include "peer_registry.h"
 #include "profiler.h"
 #include "proc_log_partial.h"
@@ -1471,14 +1472,23 @@ int main(int argc, char *argv[])
         if (agent_bus_init(agent_bus_path) == RELAY_OK) {
             log_write(log, LOG_INFO, "Agent bus: listening on %s", agent_bus_path);
 
-            /* Discover peer agents from ~/.relay registry */
+            /* Advertise this agent and discover peers */
             const char *home = getenv("HOME");
+            const char *my_name = config_get(cfg, "agent_name", "");
             if (home) {
-                char reg_path[RELAY_MAX_PATH];
-                snprintf(reg_path, sizeof(reg_path), "%s/.relay", home);
-                const char *my_name = config_get(cfg, "agent_name", "");
-                peer_registry_init(reg_path, my_name);
-                peer_registry_probe_all();
+                char ad_dir[RELAY_MAX_PATH];
+                snprintf(ad_dir, sizeof(ad_dir), "%s/.relay.d", home);
+
+                /* Publish our own advertisement */
+                if (agent_advertise_publish(ad_dir, my_name,
+                                            agent_bus_path) == RELAY_OK) {
+                    log_write(log, LOG_INFO,
+                              "Agent bus: advertised as %s at %s",
+                              my_name, agent_bus_path);
+                }
+
+                /* Discover peers from advertisements */
+                peer_registry_init(ad_dir, my_name);
                 int n = peer_registry_count();
                 if (n > 0) {
                     log_write(log, LOG_INFO,
@@ -1486,8 +1496,9 @@ int main(int argc, char *argv[])
                     for (int i = 0; i < n; i++) {
                         const peer_entry_t *p = peer_registry_get(i);
                         log_write(log, LOG_INFO,
-                                  "  %s — %s", p->name,
-                                  p->is_alive ? "online" : "offline");
+                                  "  %s — %s (pid %d)", p->name,
+                                  p->is_alive ? "online" : "offline",
+                                  (int)p->pid);
                     }
                 } else {
                     log_write(log, LOG_INFO,
@@ -1528,7 +1539,17 @@ int main(int argc, char *argv[])
 
 cleanup:
     log_write(log, LOG_INFO, "relay shutting down");
-    if (agent_bus_enabled) agent_bus_destroy();
+    if (agent_bus_enabled) {
+        /* Withdraw advertisement before destroying bus */
+        const char *home = getenv("HOME");
+        const char *my_name = cfg ? config_get(cfg, "agent_name", "") : "";
+        if (home && my_name[0] != '\0') {
+            char ad_dir[RELAY_MAX_PATH];
+            snprintf(ad_dir, sizeof(ad_dir), "%s/.relay.d", home);
+            agent_advertise_withdraw(ad_dir, my_name);
+        }
+        agent_bus_destroy();
+    }
     peer_registry_destroy();
 
     if (g_loop) {
