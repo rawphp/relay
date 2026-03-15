@@ -163,21 +163,15 @@ int cmd_workspace_handle(session_store_t *sessions,
         return 0;
     }
 
-    /* /space <name> (primary) and /session <name> (alias) */
+    /* /space <name> — switch workspace */
     if (strncmp(text, "/space ", 7) == 0) {
         handle_session_switch(sessions, cfg, chat_id,
                               text + 7, reply, reply_size);
         return 1;
     }
-    if (strncmp(text, "/session ", 9) == 0) {
-        handle_session_switch(sessions, cfg, chat_id,
-                              text + 9, reply, reply_size);
-        return 1;
-    }
 
-    /* /spaces (primary) and /space, /session (aliases) — /sessions is now session discovery */
-    if (strcmp(text, "/spaces") == 0 || strcmp(text, "/space") == 0 ||
-        strcmp(text, "/session") == 0) {
+    /* /spaces and /space (no arg) — list workspaces */
+    if (strcmp(text, "/spaces") == 0 || strcmp(text, "/space") == 0) {
         handle_sessions_list(sessions, cfg, chat_id, reply, reply_size);
         return 1;
     }

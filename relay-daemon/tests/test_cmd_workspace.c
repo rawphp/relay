@@ -48,7 +48,7 @@ static void test_cmd_session_switch_known(void)
     config_t *cfg = make_config_two_workspaces();
     char reply[256] = {0};
 
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session ea", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space ea", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
@@ -66,7 +66,7 @@ static void test_cmd_session_switch_unknown(void)
     config_t *cfg = make_config_two_workspaces();
     char reply[256] = {0};
 
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session missing", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space missing", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "missing"));
@@ -174,7 +174,7 @@ static void test_cmd_session_no_arg_lists_workspaces(void)
     char reply[512] = {0};
 
     /* /session with no argument should show workspace list */
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     TEST_ASSERT_NOT_NULL(strstr(reply, "ea"));
@@ -192,7 +192,7 @@ static void test_cmd_session_double_quoted_arg(void)
     char reply[256] = {0};
 
     /* /session "ea" — quotes should be stripped before workspace lookup */
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session \"ea\"", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space \"ea\"", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     const char *active = session_get_active_workspace(s, "user1");
@@ -209,7 +209,7 @@ static void test_cmd_session_single_quoted_arg(void)
     char reply[256] = {0};
 
     /* /session 'ea' — single quotes should be stripped */
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session 'ea'", reply, sizeof(reply));
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/space 'ea'", reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_INT(1, handled);
     const char *active = session_get_active_workspace(s, "user1");
@@ -288,7 +288,7 @@ static void test_cmd_session_no_arg_shows_active_none(void)
     char reply[512] = {0};
 
     /* No workspace active — first line should say "Active: none" */
-    cmd_workspace_handle(s, cfg, "user1", "/session", reply, sizeof(reply));
+    cmd_workspace_handle(s, cfg, "user1", "/space", reply, sizeof(reply));
 
     TEST_ASSERT_NOT_NULL(strstr(reply, "Active: none"));
 
@@ -303,7 +303,7 @@ static void test_cmd_session_no_arg_shows_active_name(void)
     char reply[512] = {0};
 
     session_set_active_workspace(s, "user1", "ea");
-    cmd_workspace_handle(s, cfg, "user1", "/session", reply, sizeof(reply));
+    cmd_workspace_handle(s, cfg, "user1", "/space", reply, sizeof(reply));
 
     TEST_ASSERT_NOT_NULL(strstr(reply, "Active: ea"));
 
@@ -393,22 +393,6 @@ static void test_cmd_space_quoted_arg(void)
     config_free(cfg);
 }
 
-static void test_cmd_session_alias_still_works(void)
-{
-    /* /session should still work as an alias for /space */
-    session_store_t *s = make_store();
-    config_t *cfg = make_config_two_workspaces();
-    char reply[256] = {0};
-
-    int handled = cmd_workspace_handle(s, cfg, "user1", "/session ea", reply, sizeof(reply));
-
-    TEST_ASSERT_EQUAL_INT(1, handled);
-    const char *active = session_get_active_workspace(s, "user1");
-    TEST_ASSERT_EQUAL_STRING("ea", active);
-
-    session_free(s);
-    config_free(cfg);
-}
 
 static void test_cmd_sessions_alias_still_works(void)
 {
@@ -489,7 +473,6 @@ void test_cmd_workspace_suite(void)
     RUN_TEST(test_cmd_spaces_lists_workspaces);
     RUN_TEST(test_cmd_space_no_arg_lists_workspaces);
     RUN_TEST(test_cmd_space_quoted_arg);
-    RUN_TEST(test_cmd_session_alias_still_works);
     RUN_TEST(test_cmd_sessions_alias_still_works);
     RUN_TEST(test_cmd_space_help_text_references_space);
     /* REQ-139 */

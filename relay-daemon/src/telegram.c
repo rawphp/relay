@@ -567,6 +567,7 @@ int telegram_register_commands(telegram_t *tg)
         { "close",     "Close the active space"             },
         { "space",     "Switch space (/space <name>)"       },
         { "spaces",    "List all spaces"                    },
+        { "session",   "Select session (/session <number>)" },
         { "sessions",  "Browse resumable sessions"          },
         { "workspace", "Show current workspace info"        },
         { "reload",    "Reload config without restart"      },

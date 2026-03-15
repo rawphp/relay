@@ -779,6 +779,7 @@ static void test_telegram_register_commands_happy_path(void)
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"space\""));
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"spaces\""));
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"sessions\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "Select session"));
 
     telegram_free(tg);
     config_free(cfg);

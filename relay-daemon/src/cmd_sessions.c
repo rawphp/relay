@@ -6,16 +6,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* ── Static cache of last listing (for /session <N> selection) ─────── */
+
+#define MAX_CACHED_SESSIONS 10
+
+static relay_cc_session_t s_last_listing[MAX_CACHED_SESSIONS];
+static int s_last_listing_count = 0;
+
+/* ── Provider gating ───────────────────────────────────────────────── */
+
 int cmd_sessions_provider_supported(const char *provider,
                                     char *reply, size_t reply_size)
 {
-    /* Empty/NULL provider = default = claude = supported */
     if (!provider || provider[0] == '\0' ||
         strcmp(provider, "claude") == 0) {
         return 1;
     }
 
-    /* Known unsupported providers — use friendly names */
     const char *display_name = provider;
     if (strcmp(provider, "openai_codex") == 0 ||
         strcmp(provider, "openai") == 0 ||
@@ -30,19 +37,49 @@ int cmd_sessions_provider_supported(const char *provider,
     return 0;
 }
 
-int cmd_sessions_handle(relay_fs_t *fs,
-                        session_store_t *sessions,
-                        const config_t *cfg,
-                        const char *chat_id,
-                        const char *text,
-                        char *reply,
-                        size_t reply_size)
+/* ── /session <N> — select from last listing ───────────────────────── */
+
+static int handle_session_select(session_store_t *sessions,
+                                 const char *chat_id,
+                                 const char *arg,
+                                 char *reply, size_t reply_size)
 {
-    if (!text || strcmp(text, "/sessions") != 0) {
-        return 0;
+    if (!arg || arg[0] == '\0') {
+        snprintf(reply, reply_size,
+                 "Usage: /session <number>\n"
+                 "Use /sessions to list available sessions.");
+        return 1;
     }
 
-    /* Resolve the active workspace */
+    int index = atoi(arg);
+
+    if (index == 0) {
+        /* Start new session — clear current session_id */
+        session_clear(sessions, chat_id);
+        snprintf(reply, reply_size, "Starting new session.");
+        return 1;
+    }
+
+    if (index < 1 || index > s_last_listing_count) {
+        snprintf(reply, reply_size,
+                 "Invalid session number. Use /sessions to see available sessions.");
+        return 1;
+    }
+
+    const char *sid = s_last_listing[index - 1].session_id;
+    session_set(sessions, chat_id, sid);
+    snprintf(reply, reply_size, "Resumed session: %s", sid);
+    return 1;
+}
+
+/* ── /sessions — list sessions for current workspace ───────────────── */
+
+static int handle_sessions_list(relay_fs_t *fs,
+                                session_store_t *sessions,
+                                const config_t *cfg,
+                                const char *chat_id,
+                                char *reply, size_t reply_size)
+{
     resolved_workspace_t ws;
     workspace_resolve(sessions, cfg, chat_id, NULL, &ws);
 
@@ -52,19 +89,24 @@ int cmd_sessions_handle(relay_fs_t *fs,
         return 1;
     }
 
-    /* Check provider support */
     if (!cmd_sessions_provider_supported(ws.provider, reply, reply_size)) {
         return 1;
     }
 
-    /* Get home directory */
     const char *home = getenv("HOME");
     if (!home) home = "/root";
 
-    /* Scan for sessions */
-    relay_cc_session_t found[10];
+    relay_cc_session_t found[MAX_CACHED_SESSIONS];
     int count = 0;
-    session_discovery_scan(fs, ws.path, home, found, 10, &count);
+    session_discovery_scan(fs, ws.path, home, found, MAX_CACHED_SESSIONS,
+                           &count);
+
+    /* Cache the listing for /session <N> selection */
+    s_last_listing_count = count;
+    if (count > 0) {
+        memcpy(s_last_listing, found,
+               (size_t)count * sizeof(relay_cc_session_t));
+    }
 
     if (count == 0) {
         snprintf(reply, reply_size,
@@ -72,7 +114,6 @@ int cmd_sessions_handle(relay_fs_t *fs,
         return 1;
     }
 
-    /* Format the list */
     char buf[2048];
     snprintf(buf, sizeof(buf), "Sessions in %s:\n",
              ws.name[0] ? ws.name : ws.path);
@@ -92,4 +133,41 @@ int cmd_sessions_handle(relay_fs_t *fs,
 
     snprintf(reply, reply_size, "%s", buf);
     return 1;
+}
+
+/* ── Public API ────────────────────────────────────────────────────── */
+
+int cmd_sessions_handle(relay_fs_t *fs,
+                        session_store_t *sessions,
+                        const config_t *cfg,
+                        const char *chat_id,
+                        const char *text,
+                        char *reply,
+                        size_t reply_size)
+{
+    if (!text || text[0] != '/') {
+        return 0;
+    }
+
+    /* /sessions — list */
+    if (strcmp(text, "/sessions") == 0) {
+        return handle_sessions_list(fs, sessions, cfg, chat_id,
+                                    reply, reply_size);
+    }
+
+    /* /session <N> — select */
+    if (strncmp(text, "/session ", 9) == 0) {
+        return handle_session_select(sessions, chat_id, text + 9,
+                                     reply, reply_size);
+    }
+
+    /* /session (no arg) — usage */
+    if (strcmp(text, "/session") == 0) {
+        snprintf(reply, reply_size,
+                 "Usage: /session <number>\n"
+                 "Use /sessions to list available sessions.");
+        return 1;
+    }
+
+    return 0;
 }

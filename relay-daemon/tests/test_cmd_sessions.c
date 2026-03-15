@@ -224,6 +224,108 @@ static void test_sessions_no_workspace_configured(void)
     config_free(cfg);
 }
 
+/* ── REQ-142: /session <N> selection ────────────────────────────────── */
+
+static void test_session_select_valid(void)
+{
+    mock_fs_reset();
+    char *orig_home = getenv("HOME") ? strdup(getenv("HOME")) : NULL;
+    setenv("HOME", "/home/tom", 1);
+
+    mock_fs_set("/home/tom/.claude/projects/-Users-tom-project/aaa-111.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Fix login\"}}\n");
+
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_claude_config();
+    session_set_active_workspace(s, "user1", "relay");
+
+    /* First list sessions to populate the cache */
+    char reply[1024] = {0};
+    cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                        "/sessions", reply, sizeof(reply));
+
+    /* Now select session 1 */
+    memset(reply, 0, sizeof(reply));
+    int handled = cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                                      "/session 1", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "aaa-111"));
+
+    session_free(s);
+    config_free(cfg);
+    if (orig_home) { setenv("HOME", orig_home, 1); free(orig_home); }
+}
+
+static void test_session_select_zero_new(void)
+{
+    mock_fs_reset();
+    char *orig_home = getenv("HOME") ? strdup(getenv("HOME")) : NULL;
+    setenv("HOME", "/home/tom", 1);
+
+    mock_fs_set("/home/tom/.claude/projects/-Users-tom-project/aaa-111.jsonl",
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Fix login\"}}\n");
+
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_claude_config();
+    session_set_active_workspace(s, "user1", "relay");
+
+    /* List then select 0 = new session */
+    char reply[1024] = {0};
+    cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                        "/sessions", reply, sizeof(reply));
+
+    memset(reply, 0, sizeof(reply));
+    int handled = cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                                      "/session 0", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "new session"));
+
+    session_free(s);
+    config_free(cfg);
+    if (orig_home) { setenv("HOME", orig_home, 1); free(orig_home); }
+}
+
+static void test_session_select_out_of_range(void)
+{
+    mock_fs_reset();
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_claude_config();
+    char reply[512] = {0};
+
+    int handled = cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                                      "/session 99", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    /* Should indicate invalid selection */
+    TEST_ASSERT_NOT_NULL(strstr(reply, "/sessions"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
+static void test_session_no_arg_shows_usage(void)
+{
+    mock_fs_reset();
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_claude_config();
+    char reply[512] = {0};
+
+    int handled = cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                                      "/session", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "/session"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
 /* ── Suite ──────────────────────────────────────────────────────────── */
 
 void test_cmd_sessions_suite(void)
@@ -241,4 +343,9 @@ void test_cmd_sessions_suite(void)
     RUN_TEST(test_sessions_no_sessions_found);
     /* REQ-139 */
     RUN_TEST(test_sessions_no_workspace_configured);
+    /* REQ-142 */
+    RUN_TEST(test_session_select_valid);
+    RUN_TEST(test_session_select_zero_new);
+    RUN_TEST(test_session_select_out_of_range);
+    RUN_TEST(test_session_no_arg_shows_usage);
 }
