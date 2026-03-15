@@ -66,7 +66,7 @@ void workspace_resolve(session_store_t      *sessions,
     const char *global_path = config_get(cfg, "workspace_path", NULL);
     if (global_path) {
         expand_path(global_path, out->path, sizeof(out->path));
-        snprintf(out->name,     sizeof(out->name),     "");
+        out->name[0] = '\0';
         snprintf(out->provider, sizeof(out->provider), "%s",
                  config_get(cfg, "provider", ""));
         out->is_fallback = 1;
