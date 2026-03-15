@@ -51,6 +51,12 @@ memory_service_script = {{RELAY_HOME}}/apps/memory-py/memory_http.py
 # memory_ingest_interval_sec = 300
 # memory_transcript_ingest_interval_sec = 1800
 
+# ── Agent Bus (inter-agent communication) ─────────────────────────── #
+agent_bus_enabled = 1
+agent_bus_socket = {{RELAY_HOME}}/data/relay.sock
+agent_bus_rate_limit = 10
+agent_bus_max_depth = 3
+
 # ── Workspace Definitions ──────────────────────────────────────────── #
 # Each workspace is a directory the agent can be sent into.
 # Use /session <name> in Telegram to switch between workspaces.

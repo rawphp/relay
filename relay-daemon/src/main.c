@@ -1455,7 +1455,7 @@ int main(int argc, char *argv[])
     }
 
     /* Agent Bus (inter-agent communication via Unix domain socket) */
-    agent_bus_enabled = config_get_int(cfg, "agent_bus_enabled", 0);
+    agent_bus_enabled = config_get_int(cfg, "agent_bus_enabled", 1);
     if (agent_bus_enabled) {
         char agent_bus_path[RELAY_MAX_PATH];
         const char *bus_sock = config_get(cfg, "agent_bus_socket", NULL);
