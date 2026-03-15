@@ -776,8 +776,9 @@ static void test_telegram_register_commands_happy_path(void)
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"clear\""));
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"close\""));
     TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"workspace\""));
-    TEST_ASSERT_NULL(strstr(g_mock_http_last_body, "\"sessions\""));  /* removed: REQ-041 */
-    TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"session\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"space\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"spaces\""));
+    TEST_ASSERT_NOT_NULL(strstr(g_mock_http_last_body, "\"sessions\""));
 
     telegram_free(tg);
     config_free(cfg);

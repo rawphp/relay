@@ -554,20 +554,22 @@ int telegram_register_commands(telegram_t *tg)
         return RELAY_ERR;
     }
 
-    /* Commands the daemon actually handles (matches event_loop + cmd_workspace) */
+    /* Commands the daemon actually handles (matches event_loop dispatch) */
     static const struct {
         const char *command;
         const char *description;
     } commands[] = {
-        { "start",     "Get started"                   },
-        { "help",      "Show available commands"       },
-        { "status",    "Show daemon and memory status" },
-        { "restart",   "Restart the daemon"            },
-        { "clear",     "Start a new conversation"      },
-        { "close",     "Close the active workspace"    },
-        { "workspace", "Show current workspace info"   },
-        { "session",   "Switch workspace (/session <name> or list)" },
-        { "reload",    "Reload config without restart"              },
+        { "start",     "Get started"                        },
+        { "help",      "Show available commands"            },
+        { "status",    "Show daemon and memory status"      },
+        { "restart",   "Restart the daemon"                 },
+        { "clear",     "Start a new conversation"           },
+        { "close",     "Close the active space"             },
+        { "space",     "Switch space (/space <name>)"       },
+        { "spaces",    "List all spaces"                    },
+        { "sessions",  "Browse resumable sessions"          },
+        { "workspace", "Show current workspace info"        },
+        { "reload",    "Reload config without restart"      },
     };
     int ncommands = (int)(sizeof(commands) / sizeof(commands[0]));
 
