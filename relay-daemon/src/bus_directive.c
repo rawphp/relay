@@ -1,10 +1,14 @@
 #include "bus_directive.h"
 #include "agent_bus.h"
+#include "bus_dead_drop.h"
 #include "peer_registry.h"
 #include "relay.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 /* Directive pattern: [AGENT_BUS_SEND to=<name>] <message>
  * The name is everything between "to=" and "]".
@@ -61,17 +65,58 @@ int bus_directive_process(const char *text, char *out, size_t out_max,
                             notes + notes_off, sizeof(notes) - notes_off,
                             "(agent \"%s\" not found)\n", target_name);
                     } else if (!peer->is_alive) {
+                        /* Agent offline — save to dead drop */
+                        agent_bus_message_t drop_msg;
+                        memset(&drop_msg, 0, sizeof(drop_msg));
+                        snprintf(drop_msg.from, sizeof(drop_msg.from), "%s", self_name);
+                        snprintf(drop_msg.text, sizeof(drop_msg.text), "%s", msg_text);
+                        drop_msg.ts = (long long)time(NULL);
+                        snprintf(drop_msg.msg_id, sizeof(drop_msg.msg_id),
+                                 "%lld-%d", drop_msg.ts, (int)getpid());
+                        if (self_socket)
+                            snprintf(drop_msg.from_socket, sizeof(drop_msg.from_socket),
+                                     "%s", self_socket);
+
+                        const char *home = getenv("HOME");
+                        if (home) {
+                            char ad_dir[512];
+                            snprintf(ad_dir, sizeof(ad_dir), "%s/.relay.d", home);
+                            bus_dead_drop_save(ad_dir, target_name, &drop_msg);
+                        }
                         notes_off += (size_t)snprintf(
                             notes + notes_off, sizeof(notes) - notes_off,
-                            "(agent \"%s\" is offline)\n", target_name);
+                            "(agent \"%s\" is offline — message saved for when they return)\n",
+                            target_name);
                     } else {
                         /* Send the message */
-                        agent_bus_send(peer->socket_path, self_name,
-                                       self_socket, msg_text,
-                                       0, 0, target_name);
-                        notes_off += (size_t)snprintf(
-                            notes + notes_off, sizeof(notes) - notes_off,
-                            "(sent message to %s)\n", target_name);
+                        int send_rc = agent_bus_send(peer->socket_path, self_name,
+                                                     self_socket, msg_text,
+                                                     0, 0, target_name);
+                        if (send_rc == RELAY_OK) {
+                            notes_off += (size_t)snprintf(
+                                notes + notes_off, sizeof(notes) - notes_off,
+                                "(sent message to %s)\n", target_name);
+                        } else {
+                            /* Send failed — save to dead drop */
+                            agent_bus_message_t drop_msg;
+                            memset(&drop_msg, 0, sizeof(drop_msg));
+                            snprintf(drop_msg.from, sizeof(drop_msg.from), "%s", self_name);
+                            snprintf(drop_msg.text, sizeof(drop_msg.text), "%s", msg_text);
+                            drop_msg.ts = (long long)time(NULL);
+                            snprintf(drop_msg.msg_id, sizeof(drop_msg.msg_id),
+                                     "%lld-%d", drop_msg.ts, (int)getpid());
+
+                            const char *home = getenv("HOME");
+                            if (home) {
+                                char ad_dir[512];
+                                snprintf(ad_dir, sizeof(ad_dir), "%s/.relay.d", home);
+                                bus_dead_drop_save(ad_dir, target_name, &drop_msg);
+                            }
+                            notes_off += (size_t)snprintf(
+                                notes + notes_off, sizeof(notes) - notes_off,
+                                "(failed to reach %s — message saved for when they return)\n",
+                                target_name);
+                        }
                     }
 
                     count++;
