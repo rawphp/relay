@@ -82,6 +82,12 @@ typedef struct {
     int (*file_exists)(const char *path);
     int (*append_file)(const char *path, const char *content);
     int (*delete_file)(const char *path);
+    /* List files in a directory matching a suffix (e.g. ".jsonl").
+     * Fills names[] with filenames (not full paths), up to max entries.
+     * Returns the number of entries found, or -1 on error.
+     * May be NULL — callers must check before use. */
+    int (*list_dir)(const char *dir, const char *suffix,
+                    char names[][256], int max);
 } relay_fs_t;
 
 #endif /* RELAY_H */

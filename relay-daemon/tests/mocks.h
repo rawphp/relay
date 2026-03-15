@@ -141,12 +141,43 @@ static int mock_fs_delete_file(const char *path)
     return RELAY_ERR_NOTFOUND;
 }
 
+/* Mock list_dir: scans mock files for paths starting with dir/ and ending with
+ * suffix. Returns filenames (basename only) up to max. */
+static int mock_fs_list_dir(const char *dir, const char *suffix,
+                            char names[][256], int max)
+{
+    int count = 0;
+    size_t dir_len = strlen(dir);
+    size_t suf_len = suffix ? strlen(suffix) : 0;
+
+    for (int i = 0; i < g_mock_file_count && count < max; i++) {
+        if (!g_mock_files[i].exists) continue;
+        const char *p = g_mock_files[i].path;
+        /* Check dir prefix (dir + '/') */
+        if (strncmp(p, dir, dir_len) != 0) continue;
+        if (p[dir_len] != '/') continue;
+        const char *fname = p + dir_len + 1;
+        /* Skip if contains further slashes (subdirectory) */
+        if (strchr(fname, '/')) continue;
+        /* Check suffix */
+        if (suffix && suf_len > 0) {
+            size_t flen = strlen(fname);
+            if (flen < suf_len) continue;
+            if (strcmp(fname + flen - suf_len, suffix) != 0) continue;
+        }
+        snprintf(names[count], 256, "%s", fname);
+        count++;
+    }
+    return count;
+}
+
 static relay_fs_t g_mock_fs = {
     .read_file = mock_fs_read_file,
     .write_file = mock_fs_write_file,
     .file_exists = mock_fs_file_exists,
     .append_file = mock_fs_append_file,
-    .delete_file = mock_fs_delete_file
+    .delete_file = mock_fs_delete_file,
+    .list_dir = mock_fs_list_dir
 };
 
 /* ── Mock HTTP ──────────────────────────────────────────────────────── */
