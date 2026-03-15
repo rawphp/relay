@@ -1464,8 +1464,17 @@ int main(int argc, char *argv[])
         if (bus_sock) {
             snprintf(agent_bus_path, sizeof(agent_bus_path), "%s", bus_sock);
         } else {
-            const char *ws = config_get(cfg, "workspace_path", ".");
-            snprintf(agent_bus_path, sizeof(agent_bus_path), "%s/relay.sock", ws);
+            /* Derive from install directory (config_path minus /config/relay.conf) */
+            char install_dir[RELAY_MAX_PATH];
+            if (path_util_install_dir(config_path, install_dir,
+                                      sizeof(install_dir)) == RELAY_OK) {
+                snprintf(agent_bus_path, sizeof(agent_bus_path),
+                         "%s/data/relay.sock", install_dir);
+            } else {
+                snprintf(agent_bus_path, sizeof(agent_bus_path),
+                         "/tmp/relay-%s.sock",
+                         config_get(cfg, "agent_name", "agent"));
+            }
         }
         int bus_rate = config_get_int(cfg, "agent_bus_rate_limit", 10);
         agent_bus_set_rate_limit(bus_rate);
