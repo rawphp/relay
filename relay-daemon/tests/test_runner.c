@@ -45,6 +45,7 @@ extern void test_session_discovery_suite(void);
 extern void test_cmd_sessions_suite(void);
 extern void test_peer_registry_suite(void);
 extern void test_bus_directive_suite(void);
+extern void test_agent_advertise_suite(void);
 
 int main(void)
 {
@@ -90,6 +91,7 @@ int main(void)
     test_cmd_sessions_suite();
     test_peer_registry_suite();
     test_bus_directive_suite();
+    test_agent_advertise_suite();
 
     return UNITY_END();
 }
