@@ -442,6 +442,28 @@ static void test_cmd_space_help_text_references_space(void)
     config_free(cfg);
 }
 
+/* ── REQ-139: no-workspace edge case ───────────────────────────────── */
+
+static config_t *make_empty_config(void)
+{
+    return config_load_string("provider = claude\n");
+}
+
+static void test_cmd_spaces_no_workspaces(void)
+{
+    session_store_t *s = make_store();
+    config_t *cfg = make_empty_config();
+    char reply[512] = {0};
+
+    int handled = cmd_workspace_handle(s, cfg, "user1", "/spaces", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "No workspaces configured"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
 /* ── Suite ──────────────────────────────────────────────────────────── */
 
 void test_cmd_workspace_suite(void)
@@ -470,4 +492,6 @@ void test_cmd_workspace_suite(void)
     RUN_TEST(test_cmd_session_alias_still_works);
     RUN_TEST(test_cmd_sessions_alias_still_works);
     RUN_TEST(test_cmd_space_help_text_references_space);
+    /* REQ-139 */
+    RUN_TEST(test_cmd_spaces_no_workspaces);
 }

@@ -196,6 +196,34 @@ static void test_sessions_no_sessions_found(void)
     }
 }
 
+/* ── REQ-139: no-workspace tests ────────────────────────────────────── */
+
+static config_t *make_empty_config(void)
+{
+    /* No workspace blocks at all */
+    const char *text = "provider = claude\n";
+    return config_load_string(text);
+}
+
+static void test_sessions_no_workspace_configured(void)
+{
+    mock_fs_reset();
+    session_store_t *s = session_create(&g_mock_fs, &g_mock_clock,
+                                        "/sessions.json", 24);
+    config_t *cfg = make_empty_config();
+    char reply[512] = {0};
+
+    int handled = cmd_sessions_handle(&g_mock_fs, s, cfg, "user1",
+                                      "/sessions", reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_INT(1, handled);
+    /* Should mention relay.conf */
+    TEST_ASSERT_NOT_NULL(strstr(reply, "relay.conf"));
+
+    session_free(s);
+    config_free(cfg);
+}
+
 /* ── Suite ──────────────────────────────────────────────────────────── */
 
 void test_cmd_sessions_suite(void)
@@ -211,4 +239,6 @@ void test_cmd_sessions_suite(void)
     RUN_TEST(test_sessions_gemini_provider_rejected);
     RUN_TEST(test_sessions_lists_discovered_sessions);
     RUN_TEST(test_sessions_no_sessions_found);
+    /* REQ-139 */
+    RUN_TEST(test_sessions_no_workspace_configured);
 }
