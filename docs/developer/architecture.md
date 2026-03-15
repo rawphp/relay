@@ -73,11 +73,106 @@ if (rc != RELAY_OK || resp.is_error) { /* handle error */ }
 
 Tracks active LLM sessions per Telegram chat. Sessions are persisted to `~/relay/data/sessions.json` so conversations survive daemon restarts. A session key is derived from the chat ID (and optionally the workspace), enabling multi-workspace agents with separate conversation contexts.
 
-### Agent Bus (`agent_bus.c`)
+### Agent Bus
 
-A Unix domain socket (`AF_UNIX`, `SOCK_STREAM`) that allows multiple relay agents to send messages to each other. The listening socket is non-blocking — `agent_bus_accept_message()` returns `RELAY_ERR_NOTFOUND` (not `RELAY_ERR`) when no message is waiting (EAGAIN), so it never stalls the main loop.
+Inter-agent communication via Unix domain sockets. Multiple relay agents can exchange messages autonomously — the daemon handles everything without human intervention.
 
-The agent registry at `~/.relay` maps `agent_name=~/agent/home` and is used to discover other agents' socket paths.
+#### Core Protocol (`agent_bus.c`)
+
+Each agent listens on a Unix domain socket (`AF_UNIX`, `SOCK_STREAM`). The socket is non-blocking — `agent_bus_accept_message()` returns `RELAY_ERR_NOTFOUND` when no message is waiting (EAGAIN), so it never stalls the main loop. Checked once per event loop iteration.
+
+Messages are JSON with these fields:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `from` | string | Sender agent name |
+| `from_socket` | string | Sender's socket path (for replies) |
+| `text` | string | Message content (max 4096 chars) |
+| `ts` | number | Unix timestamp |
+| `msg_id` | string | Unique message ID |
+| `depth` | int | Conversation depth (circuit breaker) |
+| `is_autonomous` | int | 1 = AI-initiated, 0 = user-initiated |
+| `addressed_to` | string | Target agent name ("all"/"team" = broadcast) |
+
+Rate limiting (`agent_bus_rate.c`) enforces max connections per second (default: 10).
+
+#### Peer Discovery (`peer_registry.c`, `agent_advertise.c`)
+
+Agents discover each other through self-advertisement:
+
+1. **On startup**, each agent writes `~/.relay.d/{name}.json`:
+   ```json
+   {"name": "kai", "pid": 12345, "socket": "/Users/tom/kai/data/relay.sock", "started": 1710500000}
+   ```
+2. **On shutdown**, the file is removed.
+3. **Every 60 seconds**, the event loop re-scans `~/.relay.d/` for new/removed advertisements.
+4. **Stale entries** (dead PID via `kill(pid, 0)`) are automatically cleaned up during scanning.
+
+This model means agents never read each other's configs — each agent is authoritative about its own socket path.
+
+#### Message Flow
+
+When an agent bus message arrives:
+
+```
+Inbound message (from peer socket)
+    │
+    ├── Log to agent-bus.jsonl
+    ├── Check depth < max_depth (circuit breaker, default: 3)
+    ├── Check addressed_to (selective response)
+    │
+    ├── Resolve workspace (same as Telegram messages)
+    ├── Call LLM (fresh session, no --resume)
+    │
+    ├── Send reply back to sender's socket
+    ├── Notify human via Telegram: "[Bus] Ash → Kai: <preview>"
+    └── Append to today's memory file
+```
+
+Key design decisions:
+- **Fresh sessions** — bus messages don't use `--resume`. Each exchange is self-contained with context in the prompt. This avoids stale session errors.
+- **Separate session tracks** — human conversations use `claude:{chat_id}`, bus uses `agent-bus:{peer}`. No session merging to avoid interjection.
+- **Human notification** — after every successful bus exchange, the authorized Telegram user gets a `[Bus]` notification so they can observe without being a relay.
+
+#### Bus Directives (`bus_directive.c`)
+
+The LLM can initiate agent-to-agent communication by emitting directives in its response:
+
+```
+[AGENT_BUS_SEND to=ash] Hey Ash, Tom wants to know about your status.
+```
+
+The daemon (`process_bus_directives()` in `event_loop.c`):
+1. Strips the directive from the Telegram-bound response
+2. Looks up the target in the peer registry
+3. Sends via `agent_bus_send()` if online, or saves to dead drop if offline
+4. Appends a status note: "(sent message to ash)" or "(agent offline — message saved)"
+
+Integrated into all response paths: streaming final-send, dispatch_llm_response (documents/photos), and reaction handler. NOT applied to streaming paragraph flushes or bus-to-bus replies.
+
+The bus prompt explicitly tells the LLM "Reply directly. Do NOT use [AGENT_BUS_SEND]" to prevent replies from containing redundant directives.
+
+#### Dead Drop (`bus_dead_drop.c`)
+
+When a target agent's daemon is down, messages are persisted instead of dropped:
+
+- **Save**: `~/.relay.d/inbox/{target}/pending.jsonl` — JSONL with from, text, ts, msg_id
+- **Load on startup**: daemon checks its inbox, processes pending messages through the LLM, sends replies, notifies the human
+- **Clear**: inbox file deleted after processing
+
+This ensures agents never miss messages across daemon restarts.
+
+#### Key Files
+
+| File | Purpose |
+|------|---------|
+| `agent_bus.c` | Socket protocol: init, accept, send, log, destroy |
+| `agent_bus_rate.c` | Connection rate limiter |
+| `agent_advertise.c` | Write/remove `~/.relay.d/{name}.json` |
+| `peer_registry.c` | Scan ads, PID liveness, build LLM context block |
+| `bus_directive.c` | Parse `[AGENT_BUS_SEND]` from LLM output |
+| `bus_dead_drop.c` | Offline message persistence |
+| `pending_bus_messages.c` | Per-workspace retry queue for LLM failures |
 
 ### Command Handlers (`cmd_workspace.c`, `cmd_sessions.c`)
 
@@ -139,7 +234,18 @@ The filesystem struct (`relay_fs_t`) includes a `list_dir()` function for listin
 └── MEMORY.md          ← curated long-term memory
 ```
 
-Multiple agents can run independently — each has its own `~/relay/` home. The registry at `~/.relay` maps names to home directories.
+Multiple agents can run independently — each has its own home directory.
+
+**Shared directories** (across all agents):
+```
+~/.relay              ← agent registry (name=home_path, written by install.sh)
+~/.relay.d/           ← peer discovery advertisements
+├── kai.json          ← Kai's advertisement (PID, socket path)
+├── ash.json          ← Ash's advertisement
+└── inbox/            ← dead drop for offline messages
+    └── kai/
+        └── pending.jsonl
+```
 
 ## Error Codes
 
