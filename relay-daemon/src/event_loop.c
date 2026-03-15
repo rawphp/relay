@@ -8,6 +8,7 @@
 #include "interruption.h"
 #include "llm_prompt.h"
 #include "agent_bus.h"
+#include "bus_dead_drop.h"
 #include "bus_directive.h"
 #include "path_util.h"
 #include "peer_registry.h"
@@ -2326,6 +2327,52 @@ int event_loop_run(event_loop_t *loop)
                          recovery_msg, sizeof(recovery_msg));
         send_telegram(loop, loop->pending_recovery_chat_id, recovery_msg);
         loop->pending_recovery_chat_id[0] = '\0';
+    }
+
+    /* Process dead drop inbox — messages received while daemon was down */
+    if (loop->agent_bus_enabled && loop->peer_ad_dir[0] != '\0' &&
+        loop->peer_self_name[0] != '\0') {
+        char inbox_buf[8192];
+        int pending = bus_dead_drop_load(loop->peer_ad_dir,
+                                          loop->peer_self_name,
+                                          inbox_buf, sizeof(inbox_buf));
+        if (pending > 0) {
+            log_write(loop->deps.log, LOG_INFO,
+                      "Dead drop: %d pending message(s) from offline inbox", pending);
+
+            /* Resolve workspace for LLM call */
+            resolved_workspace_t dd_ws;
+            workspace_resolve(loop->deps.sessions, loop->deps.cfg,
+                              "agent-bus", loop->config_path, &dd_ws);
+
+            /* Process via LLM */
+            llm_response_t resp;
+            memset(&resp, 0, sizeof(resp));
+            int rc = llm_provider_send_workspace(loop->deps.llm, inbox_buf, NULL,
+                                                  dd_ws.path, dd_ws.provider, &resp);
+
+            if (rc == RELAY_OK && !resp.is_error && resp.result[0] != '\0') {
+                /* Process any bus directives in the response */
+                process_bus_directives(loop, resp.result);
+
+                /* Notify human */
+                if (loop->authorized_user[0] != '\0') {
+                    char note[512];
+                    snprintf(note, sizeof(note),
+                             "[Bus] Processed %d offline message(s): %.200s",
+                             pending, resp.result);
+                    send_telegram(loop, loop->authorized_user, note);
+                }
+
+                log_write(loop->deps.log, LOG_INFO,
+                          "Dead drop: processed %d message(s)", pending);
+            } else {
+                log_write(loop->deps.log, LOG_WARN,
+                          "Dead drop: LLM error processing inbox (rc=%d)", rc);
+            }
+
+            bus_dead_drop_clear(loop->peer_ad_dir, loop->peer_self_name);
+        }
     }
 
     /* Startup notification — lets the user know the daemon is live and
