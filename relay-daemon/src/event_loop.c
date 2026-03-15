@@ -72,6 +72,8 @@ struct event_loop {
     /* Agent bus state */
     int  agent_bus_enabled;
     char agent_bus_log_dir[RELAY_MAX_PATH];
+    char peer_ad_dir[RELAY_MAX_PATH];   /* ~/.relay.d/ for periodic rescan */
+    char peer_self_name[64];            /* Own agent name for self-exclusion */
     time_t last_peer_probe;
 
     /* Crash recovery: set on startup if pending-response.json was found */
@@ -2031,6 +2033,15 @@ event_loop_t *event_loop_create(event_loop_deps_t *deps)
         const char *ws = config_get(deps->cfg, "workspace_path", ".");
         snprintf(loop->agent_bus_log_dir, sizeof(loop->agent_bus_log_dir),
                  "%s/data/transcripts", ws);
+
+        /* Store peer discovery params for periodic rescan */
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(loop->peer_ad_dir, sizeof(loop->peer_ad_dir),
+                     "%s/.relay.d", home);
+        }
+        snprintf(loop->peer_self_name, sizeof(loop->peer_self_name),
+                 "%s", config_get(deps->cfg, "agent_name", ""));
     }
 
     /* Crash recovery: if a pending-response record exists, the daemon was
@@ -2314,11 +2325,18 @@ int event_loop_run(event_loop_t *loop)
         /* Check agent bus (non-blocking — returns immediately if nothing pending) */
         poll_agent_bus(loop);
 
-        /* Periodic peer liveness re-probe (every 60 seconds) */
-        if (loop->agent_bus_enabled && peer_registry_count() > 0) {
+        /* Periodic peer rescan + liveness probe (every 60 seconds) */
+        if (loop->agent_bus_enabled && loop->peer_ad_dir[0] != '\0') {
             time_t now = time(NULL);
             if (now - loop->last_peer_probe >= 60) {
-                peer_registry_probe_all();
+                int old_count = peer_registry_count();
+                peer_registry_init(loop->peer_ad_dir, loop->peer_self_name);
+                int new_count = peer_registry_count();
+                if (new_count != old_count) {
+                    log_write(loop->deps.log, LOG_INFO,
+                              "Peer rescan: %d peer(s) (was %d)",
+                              new_count, old_count);
+                }
                 loop->last_peer_probe = now;
             }
         }
