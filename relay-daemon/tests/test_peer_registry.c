@@ -47,7 +47,7 @@ static void cleanup_addir(void)
     /* Remove all .json files */
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "rm -f %s/*.json", g_addir);
-    (void)system(cmd);
+    int __attribute__((unused)) rc = system(cmd);
     rmdir(g_addir);
 }
 
