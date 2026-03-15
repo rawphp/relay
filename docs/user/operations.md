@@ -85,15 +85,18 @@ Once the daemon is running, send these commands in Telegram:
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show all available commands (also `/start`) |
-| `/status` | Show daemon status and memory sidecar health |
-| `/reload` | Reload `relay.conf` without restarting |
+| `/start` | Get started |
+| `/help` | Show available commands |
+| `/status` | Show daemon and memory status |
 | `/restart` | Restart the daemon |
-| `/clear` | Start a new conversation (clears session + workspace) |
-| `/close` | Close the active workspace (same effect as `/clear`) |
-| `/workspace` | Show current workspace path and provider |
-| `/sessions` | List all configured workspaces |
-| `/session <name>` | Switch to a named workspace |
+| `/clear` | Start a new conversation |
+| `/close` | Close the active space |
+| `/space <name>` | Switch space |
+| `/spaces` | List all spaces |
+| `/session <number>` | Select session from listing |
+| `/sessions` | Browse resumable sessions |
+| `/workspace` | Show current workspace info |
+| `/reload` | Reload config without restart |
 
 ![Telegram commands](/screenshots/telegram-commands.png)
 
