@@ -1,7 +1,7 @@
 CC      = cc
 VERSION = $(shell git describe --tags --always 2>/dev/null || echo "0.0.0")
-CFLAGS  = -Wall -Wextra -Werror -pedantic -std=c11 -Iinclude -Ivendor \
-          -O2 -g -DRELAY_VERSION='"$(VERSION)"'
+CFLAGS  = -Wall -Wextra -Werror -pedantic -std=c11 -D_DEFAULT_SOURCE \
+          -Iinclude -Ivendor -O2 -g -DRELAY_VERSION='"$(VERSION)"'
 
 SRC     = $(wildcard src/*.c)
 OBJ     = $(SRC:src/%.c=build/%.o)
