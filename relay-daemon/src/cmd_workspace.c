@@ -1,4 +1,5 @@
 #include "cmd_workspace.h"
+#include "relay.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -67,7 +68,7 @@ static void handle_sessions_list(session_store_t *sessions,
         const workspace_def_t *ws = config_get_workspace_by_index(cfg, i);
         if (!ws) continue;
 
-        char line[256];
+        char line[RELAY_MAX_PATH + 128];
         int is_active = (active && active[0] != '\0' &&
                          strcmp(active, ws->name) == 0);
         snprintf(line, sizeof(line),
@@ -92,7 +93,7 @@ static void handle_sessions_list(session_store_t *sessions,
         }
         if (!already_listed) {
             int is_active = (!active || active[0] == '\0');
-            char line[256];
+            char line[RELAY_MAX_PATH + 128];
             snprintf(line, sizeof(line),
                      "%s (default) \342\200\224 %s\n",
                      is_active ? "*" : " ",
