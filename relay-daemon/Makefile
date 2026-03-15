@@ -19,14 +19,18 @@ UNAME := $(shell uname)
 
 # GCC-only: suppress false-positive truncation warnings on snprintf
 # (Clang doesn't emit these and doesn't recognise the flags)
+# Linux also needs -lutil for openpty()
 ifneq ($(UNAME), Darwin)
 CFLAGS += -Wno-format-truncation -Wno-stringop-truncation
+LDLIBS_EXTRA = -lutil
+else
+LDLIBS_EXTRA =
 endif
 
 # ── Production build ────────────────────────────────────────────────── #
 
 relay: build $(OBJ) build/cJSON.o
-	$(CC) $(CFLAGS) -o $@ $(OBJ) build/cJSON.o -lcurl -lpthread
+	$(CC) $(CFLAGS) -o $@ $(OBJ) build/cJSON.o -lcurl -lpthread $(LDLIBS_EXTRA)
 ifeq ($(UNAME), Darwin)
 	codesign -s - $@ 2>/dev/null || true
 endif

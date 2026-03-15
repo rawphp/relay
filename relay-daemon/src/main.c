@@ -36,7 +36,11 @@
 #include <sys/wait.h>
 #include <pthread.h>
 #include <termios.h>
+#ifdef __APPLE__
 #include <util.h>      /* openpty() — macOS */
+#else
+#include <pty.h>       /* openpty() — Linux */
+#endif
 
 /* ── Globals (minimal — only for signal handling) ───────────────────── */
 
