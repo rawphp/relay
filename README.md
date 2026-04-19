@@ -6,6 +6,8 @@ relay is a lightweight C daemon that routes Telegram messages to Claude Code (or
 
 No cloud infrastructure. No web UI. Just a process on your machine and your Telegram app.
 
+→ **[Architecture notes](ARCHITECTURE.md)** — why C, how the agent bus works, the trade-offs I took.
+
 ---
 
 ## Quick Start
