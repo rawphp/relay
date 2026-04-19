@@ -121,4 +121,6 @@ Honest list:
 - Coverage is not published. The 573-test suite passes on every build; I haven't wired gcov into CI and I don't want to claim a number I can't cite.
 - Multi-agent scaling on a single host beyond ~6 agents hasn't been tested. Per-peer rescan is O(n) and the dead-drop inbox is unbounded in file count.
 
-Next on the list: voice-in on Telegram (pipeline exists, not wired end-to-end), and replacing the Python memory sidecar.
+relay is not under active development. I built it in seven days in March 2026 using do-work, used it for a few weeks, and went back to Claude Code in the terminal after Anthropic changed their TOS. This document is kept as an accurate record of the design stance at v1.
+
+Full retrospective, including what do-work got right and wrong across the 7-day build: https://tomkaczocha.com/writing/seven-days-194-tasks-one-daemon
