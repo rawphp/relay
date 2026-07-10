@@ -327,12 +327,16 @@ int llm_provider_send_streaming(llm_provider_t *llm, const char *message,
     profiler_timer_start(&backend_timer);
     const char *backend_name = llm_provider_name(llm);
 
-    /* Only Claude backend supports streaming; fall back for others */
+    /* Only Claude backend supports streaming; fall back for others.
+     * Use the retry wrapper — it handles transient failures and stale
+     * --resume sessions (drops the dead session and retries fresh) and
+     * never re-streams after tokens were already delivered. */
     if (llm->backend == LLM_BACKEND_CLAUDE) {
         claude_response_t cl_resp;
         memset(&cl_resp, 0, sizeof(cl_resp));
-        int rc = claude_send_streaming(llm->client.claude, augmented, session_id,
-                                       workspace_path, on_token, userdata, &cl_resp);
+        int rc = claude_send_streaming_with_retry(
+            llm->client.claude, augmented, session_id,
+            workspace_path, on_token, userdata, &cl_resp);
         copy_provider_resp(resp, cl_resp.session_id, cl_resp.result,
                            cl_resp.duration_ms, cl_resp.is_error);
         profiler_emit_event("llm.send_streaming",

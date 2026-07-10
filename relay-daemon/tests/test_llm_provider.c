@@ -203,6 +203,55 @@ static void test_llm_provider_send_streaming_delivers_tokens(void)
     config_free(cfg);
 }
 
+static void test_llm_provider_send_streaming_recovers_stale_session(void)
+{
+    mock_proc_reset();
+    /* First attempt: CLI reports the resumed session no longer exists
+     * (error result event + marker on stderr). Second attempt: success.
+     * The streaming path must go through the retry wrapper so the stale
+     * session is dropped and the message still gets answered. */
+    mock_proc_set_stream_output(
+        "",
+        "{\"type\":\"result\",\"subtype\":\"error_during_execution\","
+        "\"session_id\":\"\",\"result\":\"\",\"duration_ms\":10}");
+    mock_proc_set_stderr(
+        "No conversation found with session ID: dead-beef");
+    mock_proc_set_stream_output_after_n_calls(1,
+        "Recovered!",
+        "{\"type\":\"result\",\"subtype\":\"success\","
+        "\"session_id\":\"fresh-sess\","
+        "\"result\":\"Recovered!\",\"duration_ms\":100}");
+
+    const char *cfg_text =
+        "claude_binary = /usr/local/bin/claude\n"
+        "claude_timeout = 60\n"
+        "claude_retry_count = 3\n"
+        "claude_retry_backoff_ms = 0\n"
+        "workspace_path = /home/user/workspace\n";
+
+    config_t *cfg = config_load_string(cfg_text);
+    llm_provider_t *llm = llm_provider_create(&g_mock_proc, cfg);
+    TEST_ASSERT_NOT_NULL(llm);
+
+    llm_token_acc_t acc;
+    memset(&acc, 0, sizeof(acc));
+    llm_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+
+    int rc = llm_provider_send_streaming(llm, "hello", "dead-beef",
+                                         NULL,
+                                         llm_token_accumulate, &acc, &resp);
+    TEST_ASSERT_EQUAL_INT(RELAY_OK, rc);
+    TEST_ASSERT_EQUAL_INT(0, resp.is_error);
+    TEST_ASSERT_EQUAL_STRING("fresh-sess", resp.session_id);
+    TEST_ASSERT_EQUAL_STRING("Recovered!", resp.result);
+    TEST_ASSERT_EQUAL_INT(2, mock_proc_call_count());
+    TEST_ASSERT_NULL(strstr(g_mock_proc_last_args_joined, "--resume"));
+
+    llm_provider_free(llm);
+    config_free(cfg);
+}
+
 static void test_llm_provider_send_streaming_null_safety(void)
 {
     llm_token_acc_t acc;
@@ -670,6 +719,7 @@ void test_llm_provider_suite(void)
     RUN_TEST(test_llm_provider_accepts_gemini_alias);
     /* streaming tests */
     RUN_TEST(test_llm_provider_send_streaming_delivers_tokens);
+    RUN_TEST(test_llm_provider_send_streaming_recovers_stale_session);
     RUN_TEST(test_llm_provider_send_streaming_null_safety);
     RUN_TEST(test_llm_provider_send_streaming_uses_workspace_path);
     RUN_TEST(test_llm_provider_send_streaming_uses_default_when_no_workspace);

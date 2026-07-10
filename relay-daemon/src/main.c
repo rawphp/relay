@@ -346,10 +346,22 @@ void proc_set_current_workspace_path(const char *path)
     }
 }
 
+/* Thread-local: stderr captured from the most recent spawn on this thread.
+ * Exposed via relay_proc_t.last_stderr so callers (claude.c) can
+ * distinguish failure causes, e.g. a stale --resume session. */
+static __thread char tls_last_stderr[4096] = {0};
+
+static const char *proc_last_stderr(void)
+{
+    return tls_last_stderr;
+}
+
 static int proc_spawn(const char *bin, const char **args,
                       const char *input, char *output, size_t max,
                       int timeout_sec)
 {
+    tls_last_stderr[0] = '\0';
+
     int stdin_pipe[2], stdout_pipe[2];
     if (pipe(stdin_pipe) < 0 || pipe(stdout_pipe) < 0) {
         return RELAY_ERR;
@@ -452,6 +464,10 @@ static int proc_spawn(const char *bin, const char **args,
 
     if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
         int code = WEXITSTATUS(status);
+        /* stderr is dup2'd into the stdout pipe in this spawner, so on
+         * failure the output buffer holds the error text — keep a copy for
+         * last_stderr() so callers can inspect the failure cause. */
+        snprintf(tls_last_stderr, sizeof(tls_last_stderr), "%s", output);
         if (g_log) {
             log_write(g_log, LOG_WARN,
                       "[claude] exit code=%d output_empty=%d",
@@ -537,6 +553,8 @@ static int proc_spawn_streaming(const char *bin, const char **args,
                                 char *result_line, size_t result_max,
                                 int timeout_sec)
 {
+    tls_last_stderr[0] = '\0';
+
     /* Use a PTY for the child's stdout so Node.js (Claude CLI) sees a TTY
      * and flushes each token immediately rather than buffering until exit. */
     int stdin_pipe[2];
@@ -765,6 +783,10 @@ static int proc_spawn_streaming(const char *bin, const char **args,
                               stderr_buf[n - 1] == ' ')) {
                 stderr_buf[--n] = '\0';
             }
+            /* Keep a copy for last_stderr() — lets callers distinguish
+             * failure causes (e.g. stale --resume session). */
+            snprintf(tls_last_stderr, sizeof(tls_last_stderr),
+                     "%s", stderr_buf);
             if (stderr_buf[0] != '\0' && g_log) {
                 log_write(g_log, LOG_WARN,
                           "[claude] stderr: %.2000s", stderr_buf);
@@ -795,7 +817,8 @@ static int proc_spawn_streaming(const char *bin, const char **args,
 
 static relay_proc_t real_proc = {
     .spawn = proc_spawn,
-    .spawn_streaming = proc_spawn_streaming
+    .spawn_streaming = proc_spawn_streaming,
+    .last_stderr = proc_last_stderr
 };
 
 /* ── Real clock ─────────────────────────────────────────────────────── */

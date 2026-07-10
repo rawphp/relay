@@ -276,11 +276,16 @@ update_agent() {
     # ── Install updated files (preserve user files) ──
     info "  Installing update..."
 
-    # Binary
+    # Binary — remove first so cp creates a NEW inode. On Apple Silicon,
+    # overwriting a signed binary in place invalidates the kernel's code
+    # signature cache and every subsequent exec is SIGKILLed (Killed: 9),
+    # and a plain `codesign -s -` can't repair it (needs -f to re-sign).
+    rm -f "$agent_home/bin/relay"
     cp "$DAEMON_BIN" "$agent_home/bin/relay"
     chmod +x "$agent_home/bin/relay"
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        codesign -s - "$agent_home/bin/relay" 2>/dev/null || true
+        codesign -f -s - "$agent_home/bin/relay" 2>/dev/null || \
+            warn "  codesign failed — binary may be killed on launch"
     fi
 
     # Memory sidecar scripts (update if already installed or --with-memory)

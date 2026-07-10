@@ -781,6 +781,154 @@ static void test_claude_streaming_no_retry_after_tokens_delivered(void)
     config_free(cfg);
 }
 
+/* ── Tests: stale session auto-recovery ─────────────────────────────── */
+/* When Claude Code has deleted the session that --resume points at, the CLI
+ * fails every attempt with "No conversation found with session ID: …".
+ * The retry wrappers must drop the dead session and retry fresh. */
+
+static const char *stale_cfg_text =
+    "claude_binary = /usr/local/bin/claude\n"
+    "claude_timeout = 60\n"
+    "claude_retry_count = 3\n"
+    "claude_retry_backoff_ms = 0\n"
+    "workspace_path = /home/user/workspace\n";
+
+static void test_claude_retry_stale_session_starts_fresh(void)
+{
+    mock_proc_reset();
+    /* First call: claude exits non-zero (spawn reports RELAY_ERR) with the
+     * stale-session marker on stderr. Second call: success. */
+    g_mock_proc_status = RELAY_ERR;
+    mock_proc_set_stderr(
+        "No conversation found with session ID: "
+        "466b4553-d5e7-4dca-8e57-b275dcfb4c92");
+    mock_proc_set_output_after_n_calls(1,
+        "{\"type\":\"result\",\"subtype\":\"success\","
+        "\"session_id\":\"fresh-sess\","
+        "\"result\":\"Recovered!\",\"duration_ms\":100}");
+
+    config_t *cfg = config_load_string(stale_cfg_text);
+    claude_t *cl = claude_create(&g_mock_proc, cfg);
+    TEST_ASSERT_NOT_NULL(cl);
+
+    claude_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+
+    int rc = claude_send_with_retry(cl, "hello", "466b4553-dead", NULL, &resp);
+    TEST_ASSERT_EQUAL_INT(RELAY_OK, rc);
+    TEST_ASSERT_EQUAL_INT(0, resp.is_error);
+    TEST_ASSERT_EQUAL_STRING("fresh-sess", resp.session_id);
+    TEST_ASSERT_EQUAL_INT(2, mock_proc_call_count());
+    /* The recovery attempt must NOT resume the dead session */
+    TEST_ASSERT_NULL(strstr(g_mock_proc_last_args_joined, "--resume"));
+
+    claude_free(cl);
+    config_free(cfg);
+}
+
+static void test_claude_streaming_retry_stale_session_starts_fresh(void)
+{
+    mock_proc_reset();
+    /* Mirrors the production failure: CLI emits an error result event
+     * (rc=RELAY_OK, is_error=1) and the marker on stderr. */
+    mock_proc_set_stream_output(
+        "",
+        "{\"type\":\"result\",\"subtype\":\"error_during_execution\","
+        "\"session_id\":\"\",\"result\":\"\",\"duration_ms\":10}");
+    mock_proc_set_stderr(
+        "No conversation found with session ID: "
+        "466b4553-d5e7-4dca-8e57-b275dcfb4c92");
+    mock_proc_set_stream_output_after_n_calls(1,
+        "Recovered!",
+        "{\"type\":\"result\",\"subtype\":\"success\","
+        "\"session_id\":\"fresh-stream-sess\","
+        "\"result\":\"Recovered!\",\"duration_ms\":100}");
+
+    config_t *cfg = config_load_string(stale_cfg_text);
+    claude_t *cl = claude_create(&g_mock_proc, cfg);
+    TEST_ASSERT_NOT_NULL(cl);
+
+    token_acc_t acc;
+    memset(&acc, 0, sizeof(acc));
+    claude_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+
+    int rc = claude_send_streaming_with_retry(cl, "hello", "466b4553-dead",
+                                              NULL, token_accumulator, &acc,
+                                              &resp);
+    TEST_ASSERT_EQUAL_INT(RELAY_OK, rc);
+    TEST_ASSERT_EQUAL_INT(0, resp.is_error);
+    TEST_ASSERT_EQUAL_STRING("fresh-stream-sess", resp.session_id);
+    TEST_ASSERT_EQUAL_INT(2, mock_proc_call_count());
+    TEST_ASSERT_NULL(strstr(g_mock_proc_last_args_joined, "--resume"));
+
+    claude_free(cl);
+    config_free(cfg);
+}
+
+static void test_claude_streaming_stale_marker_without_session_no_fresh_retry(void)
+{
+    mock_proc_reset();
+    /* No session was supplied, so a fresh retry cannot help — the error
+     * result must be returned after one attempt (permanent error path). */
+    mock_proc_set_stream_output(
+        "",
+        "{\"type\":\"result\",\"subtype\":\"error_during_execution\","
+        "\"session_id\":\"\",\"result\":\"\",\"duration_ms\":10}");
+    mock_proc_set_stderr(
+        "No conversation found with session ID: whatever");
+
+    config_t *cfg = config_load_string(stale_cfg_text);
+    claude_t *cl = claude_create(&g_mock_proc, cfg);
+    TEST_ASSERT_NOT_NULL(cl);
+
+    token_acc_t acc;
+    memset(&acc, 0, sizeof(acc));
+    claude_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+
+    int rc = claude_send_streaming_with_retry(cl, "hello", NULL,
+                                              NULL, token_accumulator, &acc,
+                                              &resp);
+    TEST_ASSERT_TRUE(rc != RELAY_OK || resp.is_error);
+    TEST_ASSERT_EQUAL_INT(1, mock_proc_call_count());
+
+    claude_free(cl);
+    config_free(cfg);
+}
+
+static void test_claude_streaming_non_stale_error_keeps_session(void)
+{
+    mock_proc_reset();
+    /* A genuine LLM error with a live session must NOT silently drop the
+     * conversation — no fresh-session retry. */
+    mock_proc_set_stream_output(
+        "",
+        "{\"type\":\"result\",\"subtype\":\"error_during_execution\","
+        "\"session_id\":\"live-sess\",\"result\":\"\",\"duration_ms\":10}");
+    mock_proc_set_stderr("API Error: 529 overloaded");
+
+    config_t *cfg = config_load_string(stale_cfg_text);
+    claude_t *cl = claude_create(&g_mock_proc, cfg);
+    TEST_ASSERT_NOT_NULL(cl);
+
+    token_acc_t acc;
+    memset(&acc, 0, sizeof(acc));
+    claude_response_t resp;
+    memset(&resp, 0, sizeof(resp));
+
+    int rc = claude_send_streaming_with_retry(cl, "hello", "live-sess",
+                                              NULL, token_accumulator, &acc,
+                                              &resp);
+    TEST_ASSERT_TRUE(rc != RELAY_OK || resp.is_error);
+    TEST_ASSERT_EQUAL_INT(1, mock_proc_call_count());
+    /* Session was still being resumed on the (only) attempt */
+    TEST_ASSERT_NOT_NULL(strstr(g_mock_proc_last_args_joined, "--resume"));
+
+    claude_free(cl);
+    config_free(cfg);
+}
+
 /* ── Tests: retry notification callback ────────────────────────────── */
 
 static int g_retry_notify_attempt = 0;
@@ -1530,6 +1678,11 @@ void test_claude_suite(void)
     RUN_TEST(test_claude_streaming_retry_success_on_second_attempt);
     RUN_TEST(test_claude_streaming_retry_exhausted);
     RUN_TEST(test_claude_streaming_no_retry_after_tokens_delivered);
+    /* stale session auto-recovery */
+    RUN_TEST(test_claude_retry_stale_session_starts_fresh);
+    RUN_TEST(test_claude_streaming_retry_stale_session_starts_fresh);
+    RUN_TEST(test_claude_streaming_stale_marker_without_session_no_fresh_retry);
+    RUN_TEST(test_claude_streaming_non_stale_error_keeps_session);
     /* retry notification callback */
     RUN_TEST(test_claude_retry_notify_fires_on_zero_output);
     RUN_TEST(test_claude_retry_notify_not_fired_when_tokens_sent);

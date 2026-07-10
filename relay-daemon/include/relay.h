@@ -67,6 +67,11 @@ typedef struct {
                            relay_stream_token_cb on_token, void *userdata,
                            char *result_line, size_t result_max,
                            int timeout_sec);
+    /* Optional — may be NULL. Returns the stderr text captured from the
+     * most recent spawn/spawn_streaming on the calling thread ("" when the
+     * child wrote nothing). Lets callers distinguish failure causes, e.g.
+     * a --resume against a session Claude Code has deleted. */
+    const char *(*last_stderr)(void);
 } relay_proc_t;
 
 /* Clock abstraction */

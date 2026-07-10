@@ -452,6 +452,21 @@ static int is_retriable_error(int rc)
     return (rc == RELAY_ERR_TIMEOUT || rc == RELAY_ERR);
 }
 
+/* A --resume pointing at a session Claude Code has deleted (session files
+ * are cleaned up after cleanupPeriodDays) fails every attempt with the same
+ * CLI error. Detect it via the spawner's captured stderr so the retry
+ * wrappers can drop the dead session and start fresh — the caller persists
+ * the new session_id from the successful response, self-healing the store. */
+static int stale_session_error(const claude_t *cl)
+{
+    if (!cl->proc->last_stderr) {
+        return 0;
+    }
+    const char *err = cl->proc->last_stderr();
+    return err &&
+           strstr(err, "No conversation found with session ID") != NULL;
+}
+
 int claude_send_with_retry(claude_t *cl, const char *message,
                             const char *session_id, const char *workspace_path,
                             claude_response_t *resp)
@@ -470,6 +485,14 @@ int claude_send_with_retry(claude_t *cl, const char *message,
         /* Success! */
         if (rc == RELAY_OK && !resp->is_error) {
             return RELAY_OK;
+        }
+
+        /* Stale session: the stored session no longer exists on disk, so
+         * resuming can never succeed. Drop it and retry immediately with a
+         * fresh session. Can only fire once — session_id becomes NULL. */
+        if (session_id && session_id[0] != '\0' && stale_session_error(cl)) {
+            session_id = NULL;
+            continue;
         }
 
         /* Permanent error (e.g., parse failure) — don't retry */
@@ -537,6 +560,15 @@ int claude_send_streaming_with_retry(claude_t *cl, const char *message,
         /* Success! */
         if (rc == RELAY_OK && !resp->is_error) {
             return RELAY_OK;
+        }
+
+        /* Stale session: resuming a deleted session can never succeed
+         * (fails before any tokens stream). Drop it and retry immediately
+         * with a fresh session. Can only fire once. */
+        if (session_id && session_id[0] != '\0' && !ctx.fired &&
+            stale_session_error(cl)) {
+            session_id = NULL;
+            continue;
         }
 
         /* Tokens were already delivered — do NOT retry to avoid duplicates.

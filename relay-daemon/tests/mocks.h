@@ -262,6 +262,12 @@ static int g_mock_proc_succeed_after_n = -1;
 static char g_mock_proc_success_output[RELAY_MAX_RESPONSE];
 static char g_mock_proc_last_input[RELAY_MAX_MSG];
 static char g_mock_proc_last_workspace_path[RELAY_MAX_PATH];
+/* stderr reported by last_stderr() — simulates Claude CLI error output */
+static char g_mock_proc_stderr_buf[4096];
+/* All args of the most recent spawn call joined with '\n' — unlike
+ * g_mock_proc_last_args (a pointer into the caller's stack), this copy
+ * stays valid after the call returns. */
+static char g_mock_proc_last_args_joined[32768];
 
 /* Streaming state — declared here so mock_proc_reset() can reach them */
 static char g_mock_proc_stream_result[RELAY_MAX_RESPONSE];
@@ -290,6 +296,36 @@ static void mock_proc_reset(void)
     memset(g_mock_proc_stream_success_tokens, 0, sizeof(g_mock_proc_stream_success_tokens));
     memset(g_mock_proc_stream_success_result, 0, sizeof(g_mock_proc_stream_success_result));
     g_mock_proc_stream_tokens_before_fail = 0;
+    memset(g_mock_proc_stderr_buf, 0, sizeof(g_mock_proc_stderr_buf));
+    memset(g_mock_proc_last_args_joined, 0, sizeof(g_mock_proc_last_args_joined));
+}
+
+static void mock_proc_set_stderr(const char *text)
+{
+    snprintf(g_mock_proc_stderr_buf, sizeof(g_mock_proc_stderr_buf),
+             "%s", text ? text : "");
+}
+
+static const char *mock_proc_last_stderr(void)
+{
+    return g_mock_proc_stderr_buf;
+}
+
+static void mock_proc_record_args(const char **args)
+{
+    g_mock_proc_last_args = args;
+    g_mock_proc_last_args_joined[0] = '\0';
+    size_t used = 0;
+    for (int i = 0; args && args[i]; i++) {
+        int w = snprintf(g_mock_proc_last_args_joined + used,
+                         sizeof(g_mock_proc_last_args_joined) - used,
+                         "%s%s", i > 0 ? "\n" : "", args[i]);
+        if (w < 0 ||
+            (size_t)w >= sizeof(g_mock_proc_last_args_joined) - used) {
+            break; /* truncated — keep what fits */
+        }
+        used += (size_t)w;
+    }
 }
 
 static void mock_proc_set_output(const char *output)
@@ -321,7 +357,7 @@ static int mock_proc_spawn(const char *bin, const char **args,
     } else {
         g_mock_proc_last_input[0] = '\0';
     }
-    g_mock_proc_last_args = args;
+    mock_proc_record_args(args);
     g_mock_proc_last_timeout = timeout_sec;
     g_mock_proc_call_count_val++;
 
@@ -329,6 +365,7 @@ static int mock_proc_spawn(const char *bin, const char **args,
     if (g_mock_proc_succeed_after_n >= 0 &&
         g_mock_proc_call_count_val > g_mock_proc_succeed_after_n) {
         snprintf(output, max, "%s", g_mock_proc_success_output);
+        g_mock_proc_stderr_buf[0] = '\0'; /* successful spawn: no stderr */
         return RELAY_OK;
     }
 
@@ -375,12 +412,13 @@ static int mock_proc_spawn_streaming(const char *bin, const char **args,
     (void)bin;
     (void)input;
     (void)timeout_sec;
-    g_mock_proc_last_args = args;
+    mock_proc_record_args(args);
     g_mock_proc_call_count_val++;
 
     /* Check if we should succeed after N calls */
     if (g_mock_proc_stream_succeed_after_n >= 0 &&
         g_mock_proc_call_count_val > g_mock_proc_stream_succeed_after_n) {
+        g_mock_proc_stderr_buf[0] = '\0'; /* successful spawn: no stderr */
         if (on_token && g_mock_proc_stream_success_tokens[0] != '\0') {
             on_token(g_mock_proc_stream_success_tokens,
                      strlen(g_mock_proc_stream_success_tokens), userdata);
@@ -422,7 +460,8 @@ static int mock_proc_spawn_streaming(const char *bin, const char **args,
 __attribute__((unused))
 static relay_proc_t g_mock_proc = {
     .spawn = mock_proc_spawn,
-    .spawn_streaming = mock_proc_spawn_streaming
+    .spawn_streaming = mock_proc_spawn_streaming,
+    .last_stderr = mock_proc_last_stderr
 };
 
 #pragma GCC diagnostic pop
